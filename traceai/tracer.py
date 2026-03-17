@@ -27,9 +27,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Callable
 from contextvars import ContextVar, Token
-from typing import Any, AsyncGenerator, Callable, Generator, TypeVar
+from typing import Any, TypeVar
 
 from traceai.models import ErrorDetail, Span, SpanKind, SpanStatus, Trace
 from traceai.storage import TraceStore
@@ -199,7 +199,7 @@ class Tracer:
             trace.outputs = {"result": result}
             trace.close(status=SpanStatus.OK)
             return result
-        except BaseException as exc:
+        except BaseException:
             trace.close(status=SpanStatus.ERROR)
             raise
         finally:
@@ -233,7 +233,7 @@ class Tracer:
             trace.outputs = {"result": result}
             trace.close(status=SpanStatus.OK)
             return result
-        except BaseException as exc:
+        except BaseException:
             trace.close(status=SpanStatus.ERROR)
             raise
         finally:

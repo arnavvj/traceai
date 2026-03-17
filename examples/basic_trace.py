@@ -18,7 +18,6 @@ import time
 
 from traceai import tracer
 
-
 # ------------------------------------------------------------------
 # Sync example
 # ------------------------------------------------------------------
@@ -137,7 +136,10 @@ if __name__ == "__main__":
     for t in traces:
         spans = store.get_spans(t.trace_id)
         status_icon = "ok" if t.status.value == "ok" else "!!"
-        print(f"  [{status_icon}] [{t.status.value:7}] {t.name} - {len(spans)} span(s), {t.duration_ms:.1f}ms")
+        print(
+            f"  [{status_icon}] [{t.status.value:7}] {t.name}"
+            f" - {len(spans)} span(s), {t.duration_ms:.1f}ms"
+        )
         for s in spans:
             indent = "      "
             parent_marker = "+-" if s.parent_span_id else "  "

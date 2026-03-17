@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import traceback as tb
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
@@ -10,14 +10,14 @@ from pydantic import BaseModel, Field
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _new_id() -> str:
     return uuid4().hex
 
 
-class SpanKind(str, Enum):
+class SpanKind(StrEnum):
     LLM_CALL = "llm_call"
     TOOL_CALL = "tool_call"
     MEMORY_READ = "memory_read"
@@ -28,7 +28,7 @@ class SpanKind(str, Enum):
     CUSTOM = "custom"
 
 
-class SpanStatus(str, Enum):
+class SpanStatus(StrEnum):
     OK = "ok"
     ERROR = "error"
     TIMEOUT = "timeout"
@@ -41,7 +41,7 @@ class ErrorDetail(BaseModel):
     traceback: str | None = None
 
     @classmethod
-    def from_exception(cls, exc: BaseException) -> "ErrorDetail":
+    def from_exception(cls, exc: BaseException) -> ErrorDetail:
         return cls(
             exception_type=type(exc).__qualname__,
             message=str(exc),

@@ -243,8 +243,8 @@ class TestSpanContextManagerSync:
     def test_nested_spans_parent_child(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         def fn() -> None:
-            with tracer.span("outer") as outer:
-                with tracer.span("inner") as inner:
+            with tracer.span("outer"):
+                with tracer.span("inner"):
                     pass
 
         fn()
@@ -326,8 +326,8 @@ class TestSpanContextManagerAsync:
     ) -> None:
         @tracer.trace
         async def fn() -> None:
-            async with tracer.span("outer") as outer:
-                async with tracer.span("inner") as inner:
+            async with tracer.span("outer"):
+                async with tracer.span("inner"):
                     pass
 
         await fn()
