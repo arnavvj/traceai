@@ -1,0 +1,15 @@
+# CODEOWNERS
+# Defines who is automatically requested for review on PRs.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owner — all files
+* @arnavvj
+
+# Core SDK
+/traceai/                    @arnavvj
+
+# CI/CD and GitHub config — require explicit owner review
+/.github/                    @arnavvj
+
+# Packaging and release
+/pyproject.toml              @arnavvj
