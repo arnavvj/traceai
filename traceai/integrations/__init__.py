@@ -26,6 +26,6 @@ def instrument(provider: str) -> None:
 
         _patch()
     elif provider == "anthropic":
-        from traceai.integrations.anthropic import instrument as _patch  # type: ignore[no-redef]
+        from traceai.integrations.anthropic import instrument as _patch
 
         _patch()
