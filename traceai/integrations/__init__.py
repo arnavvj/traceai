@@ -20,14 +20,12 @@ def instrument(provider: str) -> None:
     """
     provider = provider.lower().strip()
     if provider not in _SUPPORTED:
-        raise ValueError(
-            f"Unsupported provider: {provider!r}. Supported: {sorted(_SUPPORTED)}"
-        )
+        raise ValueError(f"Unsupported provider: {provider!r}. Supported: {sorted(_SUPPORTED)}")
     if provider == "openai":
         from traceai.integrations.openai import instrument as _patch
 
         _patch()
     elif provider == "anthropic":
-        from traceai.integrations.anthropic import instrument as _patch  # type: ignore[no-redef]
+        from traceai.integrations.anthropic import instrument as _patch
 
         _patch()

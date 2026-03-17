@@ -59,9 +59,7 @@ class TestSyncTraceStore:
         assert result.tags == {"env": "test"}
         assert result.inputs == {"prompt": "hello"}
 
-    def test_list_traces_returns_saved(
-        self, store: TraceStore, sample_trace: Trace
-    ) -> None:
+    def test_list_traces_returns_saved(self, store: TraceStore, sample_trace: Trace) -> None:
         asyncio.run(store.save_trace(sample_trace))
         traces = store.list_traces()
         assert len(traces) == 1
@@ -100,9 +98,7 @@ class TestSyncTraceStore:
     def test_get_spans_empty(self, store: TraceStore) -> None:
         assert store.get_spans("nonexistent") == []
 
-    def test_span_with_error_round_trips(
-        self, store: TraceStore, sample_trace: Trace
-    ) -> None:
+    def test_span_with_error_round_trips(self, store: TraceStore, sample_trace: Trace) -> None:
         span = Span(trace_id=sample_trace.trace_id, name="bad-call")
         err = ErrorDetail(
             exception_type="openai.RateLimitError",
@@ -164,9 +160,7 @@ class TestAsyncTraceStore:
         assert await store.alist_traces() == []
 
     @pytest.mark.asyncio
-    async def test_save_and_aget_trace(
-        self, store: TraceStore, sample_trace: Trace
-    ) -> None:
+    async def test_save_and_aget_trace(self, store: TraceStore, sample_trace: Trace) -> None:
         await store.save_trace(sample_trace)
         result = await store.aget_trace(sample_trace.trace_id)
 

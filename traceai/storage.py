@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,7 +70,7 @@ def _str_to_dt(s: str | None) -> datetime | None:
         return None
     dt = datetime.fromisoformat(s)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -239,9 +239,7 @@ class TraceStore:
     async def aget_trace(self, trace_id: str) -> Trace | None:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM traces WHERE trace_id = ?", (trace_id,)
-            ) as cursor:
+            async with db.execute("SELECT * FROM traces WHERE trace_id = ?", (trace_id,)) as cursor:
                 row = await cursor.fetchone()
                 if row is None:
                     return None
@@ -286,9 +284,7 @@ class TraceStore:
         with sqlite3.connect(self.db_path) as conn:
             self._configure_conn(conn)
             conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM traces WHERE trace_id = ?", (trace_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM traces WHERE trace_id = ?", (trace_id,)).fetchone()
             if row is None:
                 return None
             return _row_to_trace(dict(row))
@@ -327,8 +323,6 @@ class TraceStore:
     def delete_trace(self, trace_id: str) -> bool:
         with sqlite3.connect(self.db_path) as conn:
             self._configure_conn(conn)
-            cursor = conn.execute(
-                "DELETE FROM traces WHERE trace_id = ?", (trace_id,)
-            )
+            cursor = conn.execute("DELETE FROM traces WHERE trace_id = ?", (trace_id,))
             conn.commit()
             return cursor.rowcount > 0

@@ -33,8 +33,10 @@ __all__ = [
     "ErrorDetail",
     # Storage
     "TraceStore",
-    # Tracer singleton — imported lazily below to avoid circular imports
+    # Tracer and SpanContext — imported lazily below to avoid circular imports
     "tracer",
+    "Tracer",
+    "SpanContext",
     # Auto-instrumentation
     "instrument",
     "__version__",
@@ -57,6 +59,6 @@ def instrument(provider: str) -> None:
 
 
 # Import tracer last — it depends on models and storage being importable first.
-from traceai.tracer import Tracer  # noqa: E402
+from traceai.tracer import SpanContext, Tracer  # noqa: E402
 
 tracer: Tracer = Tracer()
