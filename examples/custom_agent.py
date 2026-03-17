@@ -15,6 +15,7 @@ from traceai import SpanKind, tracer
 
 class FakeMemory:
     """Simulates a vector memory store."""
+
     _store = {
         "paris": "Paris is the capital of France.",
         "photosynthesis": "Photosynthesis converts light to chemical energy.",
@@ -26,6 +27,7 @@ class FakeMemory:
 
 class FakeLLM:
     """Simulates an LLM call."""
+
     def complete(self, prompt: str) -> tuple[str, int, int]:
         time.sleep(0.01)
         return f"Based on context: {prompt[:40]}...", len(prompt.split()), 50
@@ -61,19 +63,25 @@ def rag_agent(query: str) -> str:
 
     # Step 3: LLM call
     with tracer.span("llm-generate", kind=SpanKind.LLM_CALL) as span:
-        span.set_input({
-            "messages": [{"role": "user", "content": prompt}],
-        })
-        span.set_metadata({
-            "gen_ai.request.model": "gpt-4o",
-            "gen_ai.system": "openai",
-        })
+        span.set_input(
+            {
+                "messages": [{"role": "user", "content": prompt}],
+            }
+        )
+        span.set_metadata(
+            {
+                "gen_ai.request.model": "gpt-4o",
+                "gen_ai.system": "openai",
+            }
+        )
         response, input_tokens, output_tokens = llm.complete(prompt)
         span.set_output({"content": response})
-        span.set_metadata({
-            "gen_ai.usage.input_tokens": input_tokens,
-            "gen_ai.usage.output_tokens": output_tokens,
-        })
+        span.set_metadata(
+            {
+                "gen_ai.usage.input_tokens": input_tokens,
+                "gen_ai.usage.output_tokens": output_tokens,
+            }
+        )
 
     return response
 

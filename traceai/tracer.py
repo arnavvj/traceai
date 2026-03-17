@@ -148,22 +148,23 @@ class Tracer:
             @tracer.trace(name="custom-name", tags={"env": "prod"})
             def fn(): ...
         """
+
         def decorator(fn: F) -> F:
             trace_name = name or fn.__name__
 
             if inspect.iscoroutinefunction(fn):
+
                 @functools.wraps(fn)
                 async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                    return await self._run_trace_async(
-                        fn, args, kwargs, trace_name, tags, metadata
-                    )
+                    return await self._run_trace_async(fn, args, kwargs, trace_name, tags, metadata)
+
                 return async_wrapper  # type: ignore[return-value]
             else:
+
                 @functools.wraps(fn)
                 def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                    return self._run_trace_sync(
-                        fn, args, kwargs, trace_name, tags, metadata
-                    )
+                    return self._run_trace_sync(fn, args, kwargs, trace_name, tags, metadata)
+
                 return sync_wrapper  # type: ignore[return-value]
 
         # Called as @tracer.trace (no parentheses) — func is the decorated fn
@@ -331,6 +332,7 @@ class Tracer:
 # Dual-mode context manager — supports both `with` and `async with`
 # ------------------------------------------------------------------
 
+
 class _DualSpanCM:
     """
     A context manager object that works as both sync (`with`) and
@@ -356,9 +358,7 @@ class _DualSpanCM:
 
     # Sync protocol
     def __enter__(self) -> SpanContext:
-        span, tok_trace, tok_span = self._tracer._make_span(
-            self._name, self._kind, self._metadata
-        )
+        span, tok_trace, tok_span = self._tracer._make_span(self._name, self._kind, self._metadata)
         self._span = span
         self._tok_trace = tok_trace
         self._tok_span = tok_span
@@ -372,17 +372,13 @@ class _DualSpanCM:
         exc_tb: object,
     ) -> None:
         assert self._span and self._tok_trace and self._tok_span
-        self._tracer._close_span(
-            self._span, self._tok_trace, self._tok_span, exc_val
-        )
+        self._tracer._close_span(self._span, self._tok_trace, self._tok_span, exc_val)
         # Persist — run async save from sync context
         _run_async(self._tracer._save_span_async(self._span))
 
     # Async protocol
     async def __aenter__(self) -> SpanContext:
-        span, tok_trace, tok_span = self._tracer._make_span(
-            self._name, self._kind, self._metadata
-        )
+        span, tok_trace, tok_span = self._tracer._make_span(self._name, self._kind, self._metadata)
         self._span = span
         self._tok_trace = tok_trace
         self._tok_span = tok_span
@@ -396,9 +392,7 @@ class _DualSpanCM:
         exc_tb: object,
     ) -> None:
         assert self._span and self._tok_trace and self._tok_span
-        self._tracer._close_span(
-            self._span, self._tok_trace, self._tok_span, exc_val
-        )
+        self._tracer._close_span(self._span, self._tok_trace, self._tok_span, exc_val)
         await self._tracer._save_span_async(self._span)
 
 

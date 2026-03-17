@@ -22,6 +22,7 @@ from traceai import tracer
 # Sync example
 # ------------------------------------------------------------------
 
+
 @tracer.trace
 def research_agent(query: str) -> str:
     """A fake synchronous agent that demonstrates tracing."""
@@ -33,11 +34,13 @@ def research_agent(query: str) -> str:
 
     with tracer.span("llm-call", kind="llm_call") as span:
         span.set_input({"messages": [{"role": "user", "content": processed}]})
-        span.set_metadata({
-            "gen_ai.request.model": "gpt-4o",
-            "gen_ai.usage.input_tokens": 42,
-            "gen_ai.usage.output_tokens": 128,
-        })
+        span.set_metadata(
+            {
+                "gen_ai.request.model": "gpt-4o",
+                "gen_ai.usage.input_tokens": 42,
+                "gen_ai.usage.output_tokens": 128,
+            }
+        )
         # Simulate LLM latency
         time.sleep(0.05)
         response = f"The answer to '{processed}' is 42."
@@ -54,6 +57,7 @@ def research_agent(query: str) -> str:
 # ------------------------------------------------------------------
 # Async example with nested spans
 # ------------------------------------------------------------------
+
 
 @tracer.trace
 async def async_research_agent(query: str) -> str:
@@ -79,11 +83,13 @@ async def async_research_agent(query: str) -> str:
 
     async with tracer.span("synthesize", kind="llm_call") as span:
         span.set_input({"context": "result_a", "query": query})
-        span.set_metadata({
-            "gen_ai.request.model": "gpt-4o",
-            "gen_ai.usage.input_tokens": 512,
-            "gen_ai.usage.output_tokens": 256,
-        })
+        span.set_metadata(
+            {
+                "gen_ai.request.model": "gpt-4o",
+                "gen_ai.usage.input_tokens": 512,
+                "gen_ai.usage.output_tokens": 256,
+            }
+        )
         await asyncio.sleep(0.03)
         answer = f"Synthesized answer for: {query}"
         span.set_output({"content": answer})
@@ -94,6 +100,7 @@ async def async_research_agent(query: str) -> str:
 # ------------------------------------------------------------------
 # Error example
 # ------------------------------------------------------------------
+
 
 @tracer.trace
 def failing_agent(query: str) -> str:

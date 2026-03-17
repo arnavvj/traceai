@@ -78,9 +78,7 @@ class TestTraceDecoratorSync:
         trace = store.list_traces()[0]
         assert trace.tags == {"env": "test", "version": "1"}
 
-    def test_trace_error_status_on_exception(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    def test_trace_error_status_on_exception(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         def failing_agent() -> None:
             raise ValueError("something broke")
@@ -119,9 +117,7 @@ class TestTraceDecoratorSync:
 
 class TestTraceDecoratorAsync:
     @pytest.mark.asyncio
-    async def test_async_trace_is_saved(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_async_trace_is_saved(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         async def agent(prompt: str) -> str:
             return f"async: {prompt}"
@@ -134,9 +130,7 @@ class TestTraceDecoratorAsync:
         assert traces[0].status == SpanStatus.OK
 
     @pytest.mark.asyncio
-    async def test_async_trace_captures_inputs(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_async_trace_captures_inputs(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         async def fn(x: int) -> int:
             return x * 2
@@ -146,9 +140,7 @@ class TestTraceDecoratorAsync:
         assert trace.inputs == {"x": 5}
 
     @pytest.mark.asyncio
-    async def test_async_trace_error_on_exception(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_async_trace_error_on_exception(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         async def fn() -> None:
             raise TypeError("async fail")
@@ -160,9 +152,7 @@ class TestTraceDecoratorAsync:
         assert trace.status == SpanStatus.ERROR
 
     @pytest.mark.asyncio
-    async def test_concurrent_traces_do_not_bleed(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_concurrent_traces_do_not_bleed(self, tracer: Tracer, store: TraceStore) -> None:
         """Two concurrent agent runs must not share ContextVar state."""
 
         @tracer.trace
@@ -305,9 +295,7 @@ class TestSpanContextManagerSync:
 
 class TestSpanContextManagerAsync:
     @pytest.mark.asyncio
-    async def test_async_span_is_saved(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_async_span_is_saved(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         async def fn() -> None:
             async with tracer.span("async-step") as span:
@@ -321,9 +309,7 @@ class TestSpanContextManagerAsync:
         assert spans[0].inputs == {"q": "hello"}
 
     @pytest.mark.asyncio
-    async def test_async_nested_spans(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    async def test_async_nested_spans(self, tracer: Tracer, store: TraceStore) -> None:
         @tracer.trace
         async def fn() -> None:
             async with tracer.span("outer"):
@@ -407,9 +393,7 @@ class TestSpanContext:
         assert s.error is not None
         assert s.error.exception_type == "KeyError"
 
-    def test_span_id_and_trace_id_accessible(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    def test_span_id_and_trace_id_accessible(self, tracer: Tracer, store: TraceStore) -> None:
         captured: dict = {}
 
         @tracer.trace
@@ -431,9 +415,7 @@ class TestSpanContext:
 
 
 class TestContextAccessors:
-    def test_current_trace_id_inside_trace(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    def test_current_trace_id_inside_trace(self, tracer: Tracer, store: TraceStore) -> None:
         captured: dict = {}
 
         @tracer.trace
@@ -448,9 +430,7 @@ class TestContextAccessors:
     def test_current_trace_id_outside_trace(self, tracer: Tracer) -> None:
         assert tracer.current_trace_id() is None
 
-    def test_current_span_id_inside_span(
-        self, tracer: Tracer, store: TraceStore
-    ) -> None:
+    def test_current_span_id_inside_span(self, tracer: Tracer, store: TraceStore) -> None:
         captured: dict = {}
 
         @tracer.trace

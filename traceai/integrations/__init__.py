@@ -20,9 +20,7 @@ def instrument(provider: str) -> None:
     """
     provider = provider.lower().strip()
     if provider not in _SUPPORTED:
-        raise ValueError(
-            f"Unsupported provider: {provider!r}. Supported: {sorted(_SUPPORTED)}"
-        )
+        raise ValueError(f"Unsupported provider: {provider!r}. Supported: {sorted(_SUPPORTED)}")
     if provider == "openai":
         from traceai.integrations.openai import instrument as _patch
 
