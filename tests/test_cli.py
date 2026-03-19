@@ -125,27 +125,21 @@ class TestListCommand:
 
 
 class TestInspectCommand:
-    def test_inspect_by_prefix(
-        self, db_path: Path, sample_trace: Trace, sample_span: Span
-    ) -> None:
+    def test_inspect_by_prefix(self, db_path: Path, sample_trace: Trace, sample_span: Span) -> None:
         prefix = sample_trace.trace_id[:8]
         result = runner.invoke(app, ["inspect", prefix, "--db", str(db_path)])
         assert result.exit_code == 0
         assert "llm-call" in result.output
         assert "test-agent" in result.output
 
-    def test_inspect_full_flag(
-        self, db_path: Path, sample_trace: Trace, sample_span: Span
-    ) -> None:
+    def test_inspect_full_flag(self, db_path: Path, sample_trace: Trace, sample_span: Span) -> None:
         prefix = sample_trace.trace_id[:8]
         result = runner.invoke(app, ["inspect", prefix, "--full", "--db", str(db_path)])
         assert result.exit_code == 0
         # With --full, inputs/outputs should appear
         assert "inputs" in result.output or "prompt" in result.output
 
-    def test_inspect_error_span(
-        self, db_path: Path, error_trace: Trace, error_span: Span
-    ) -> None:
+    def test_inspect_error_span(self, db_path: Path, error_trace: Trace, error_span: Span) -> None:
         prefix = error_trace.trace_id[:8]
         result = runner.invoke(app, ["inspect", prefix, "--db", str(db_path)])
         assert result.exit_code == 0
@@ -190,17 +184,13 @@ class TestExportCommand:
     ) -> None:
         out = tmp_path / "out.json"
         prefix = sample_trace.trace_id[:8]
-        result = runner.invoke(
-            app, ["export", prefix, "--output", str(out), "--db", str(db_path)]
-        )
+        result = runner.invoke(app, ["export", prefix, "--output", str(out), "--db", str(db_path)])
         assert result.exit_code == 0
         assert out.exists()
         data = json.loads(out.read_text())
         assert "trace" in data
 
-    def test_export_trace_data(
-        self, db_path: Path, sample_trace: Trace, sample_span: Span
-    ) -> None:
+    def test_export_trace_data(self, db_path: Path, sample_trace: Trace, sample_span: Span) -> None:
         prefix = sample_trace.trace_id[:8]
         result = runner.invoke(app, ["export", prefix, "--db", str(db_path)])
         data = json.loads(result.output)
@@ -238,9 +228,7 @@ class TestDeleteCommand:
 
     def test_delete_prompts_without_yes(self, db_path: Path, sample_trace: Trace) -> None:
         prefix = sample_trace.trace_id[:8]
-        result = runner.invoke(
-            app, ["delete", prefix, "--db", str(db_path)], input="y\n"
-        )
+        result = runner.invoke(app, ["delete", prefix, "--db", str(db_path)], input="y\n")
         assert result.exit_code == 0
         assert "Deleted" in result.output
 

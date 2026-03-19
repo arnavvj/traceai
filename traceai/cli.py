@@ -16,7 +16,7 @@ import json
 import sys
 import tomllib
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import tomli_w
 import typer
@@ -26,7 +26,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from traceai.models import SpanKind, SpanStatus
-from traceai.storage import TraceStore, _DEFAULT_DB_PATH
+from traceai.storage import _DEFAULT_DB_PATH, TraceStore
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -35,7 +35,9 @@ from traceai.storage import TraceStore, _DEFAULT_DB_PATH
 # On Windows with a legacy cp1252 terminal, emoji chars are unencodable.
 # Detect this and fall back to plain ASCII icons.
 _USE_EMOJI = sys.stdout.encoding is not None and sys.stdout.encoding.lower() in (
-    "utf-8", "utf-16", "utf-32",
+    "utf-8",
+    "utf-16",
+    "utf-32",
 )
 
 SPAN_KIND_ICONS: dict[str, str]
@@ -160,9 +162,9 @@ def _write_config(data: dict) -> None:
 def list_traces(
     limit: Annotated[int, typer.Option("--limit", "-n", help="Max traces to show")] = 20,
     status: Annotated[
-        Optional[str], typer.Option("--status", help="Filter by status: ok|error|pending|timeout")
+        str | None, typer.Option("--status", help="Filter by status: ok|error|pending|timeout")
     ] = None,
-    db: Annotated[Optional[Path], typer.Option("--db", help="Path to SQLite database")] = None,
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
 ) -> None:
     """List recent agent traces."""
     if status is not None and status not in VALID_STATUSES:
@@ -206,7 +208,7 @@ def list_traces(
 def inspect_trace(
     trace_id: Annotated[str, typer.Argument(help="Trace ID or 8-char prefix")],
     full: Annotated[bool, typer.Option("--full", help="Show inputs/outputs/metadata")] = False,
-    db: Annotated[Optional[Path], typer.Option("--db", help="Path to SQLite database")] = None,
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
 ) -> None:
     """Show the full span tree for a trace."""
     store = _get_store(db)
@@ -236,9 +238,7 @@ def inspect_trace(
             f"[{span_style}]{span.status.value}[/{span_style}]"
         )
         if span.status == SpanStatus.ERROR and span.error:
-            label += (
-                f"\n  [red]{span.error.exception_type}: {span.error.message}[/red]"
-            )
+            label += f"\n  [red]{span.error.exception_type}: {span.error.message}[/red]"
         if full:
             for field_name, value in [
                 ("inputs", span.inputs),
@@ -263,9 +263,9 @@ def inspect_trace(
 def export_trace(
     trace_id: Annotated[str, typer.Argument(help="Trace ID or 8-char prefix")],
     output: Annotated[
-        Optional[Path], typer.Option("--output", "-o", help="Output file path (default: stdout)")
+        Path | None, typer.Option("--output", "-o", help="Output file path (default: stdout)")
     ] = None,
-    db: Annotated[Optional[Path], typer.Option("--db", help="Path to SQLite database")] = None,
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
 ) -> None:
     """Export a trace and all its spans as JSON."""
     store = _get_store(db)
@@ -290,7 +290,7 @@ def export_trace(
 def delete_trace(
     trace_id: Annotated[str, typer.Argument(help="Trace ID or 8-char prefix")],
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip confirmation prompt")] = False,
-    db: Annotated[Optional[Path], typer.Option("--db", help="Path to SQLite database")] = None,
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
 ) -> None:
     """Delete a trace and all its spans."""
     store = _get_store(db)
@@ -315,7 +315,7 @@ def open_dashboard() -> None:
 @app.command("config")
 def config(
     set_db: Annotated[
-        Optional[Path], typer.Option("--set-db", help="Set default database path")
+        Path | None, typer.Option("--set-db", help="Set default database path")
     ] = None,
 ) -> None:
     """Show or update TraceAI configuration."""
