@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import sys
 import tomllib
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -132,13 +133,13 @@ def _fmt_duration(ms: float | None) -> str:
     return f"{ms / 1000:.2f}s"
 
 
-def _fmt_datetime(dt) -> str:
+def _fmt_datetime(dt: datetime | None) -> str:
     if dt is None:
         return "-"
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _read_config() -> dict:
+def _read_config() -> dict[str, object]:
     if not CONFIG_PATH.exists():
         return {}
     try:
@@ -148,7 +149,7 @@ def _read_config() -> dict:
         return {}
 
 
-def _write_config(data: dict) -> None:
+def _write_config(data: dict[str, object]) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(tomli_w.dumps(data), encoding="utf-8")
 
@@ -214,6 +215,9 @@ def inspect_trace(
     store = _get_store(db)
     full_id = _resolve_trace_id(store, trace_id)
     trace = store.get_trace(full_id)
+    if trace is None:
+        err_console.print(f"[red]Trace not found: {full_id}[/red]")
+        raise typer.Exit(1)
     spans = store.get_spans(full_id)
 
     style = _status_style(trace.status.value)
@@ -271,6 +275,9 @@ def export_trace(
     store = _get_store(db)
     full_id = _resolve_trace_id(store, trace_id)
     trace = store.get_trace(full_id)
+    if trace is None:
+        err_console.print(f"[red]Trace not found: {full_id}[/red]")
+        raise typer.Exit(1)
     spans = store.get_spans(full_id)
 
     data = {
@@ -326,7 +333,7 @@ def config(
         console.print(f"[green]Default database set to {data['db_path']}[/green]")
 
     cfg = _read_config()
-    effective_db = cfg.get("db_path", str(_DEFAULT_DB_PATH))
+    effective_db = str(cfg.get("db_path", str(_DEFAULT_DB_PATH)))
 
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column("Key", style="bold")
