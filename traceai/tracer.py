@@ -111,6 +111,10 @@ class Tracer:
 
     def __init__(self, store: TraceStore | None = None) -> None:
         self._store = store or TraceStore()
+        # In-memory registry: trace_id → list of closed spans.
+        # Used to compute span_count / llm_call_count at finalization
+        # without a DB round-trip (avoids timing races with fire-and-forget saves).
+        self._span_registry: dict[str, list[Span]] = {}
 
     @property
     def store(self) -> TraceStore:
@@ -243,7 +247,10 @@ class Tracer:
             await self._finalize_trace(trace)
 
     async def _finalize_trace(self, trace: Trace) -> None:
-        """Persist trace after updating summary counters from its spans."""
+        """Persist trace after updating summary counters from the in-memory span registry."""
+        spans = self._span_registry.pop(trace.trace_id, [])
+        trace.span_count = len(spans)
+        trace.llm_call_count = sum(1 for s in spans if s.kind == SpanKind.LLM_CALL)
         await self._store.save_trace(trace)
 
     # ------------------------------------------------------------------
@@ -323,6 +330,9 @@ class Tracer:
             span.close(status=span.status)
         _current_span_id.reset(tok_span)
         _current_trace_id.reset(tok_trace)
+        # Register the closed span so _finalize_trace can compute counters.
+        registry = self._span_registry.setdefault(span.trace_id, [])
+        registry.append(span)
 
     async def _save_span_async(self, span: Span) -> None:
         await self._store.save_span(span)

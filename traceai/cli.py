@@ -13,6 +13,7 @@ Commands:
 from __future__ import annotations
 
 import json
+import sys
 import tomllib
 from pathlib import Path
 from typing import Annotated, Optional
@@ -31,21 +32,40 @@ from traceai.storage import TraceStore, _DEFAULT_DB_PATH
 # Module-level constants
 # ---------------------------------------------------------------------------
 
+# On Windows with a legacy cp1252 terminal, emoji chars are unencodable.
+# Detect this and fall back to plain ASCII icons.
+_USE_EMOJI = sys.stdout.encoding is not None and sys.stdout.encoding.lower() in (
+    "utf-8", "utf-16", "utf-32",
+)
+
+SPAN_KIND_ICONS: dict[str, str]
+if _USE_EMOJI:
+    SPAN_KIND_ICONS = {
+        SpanKind.LLM_CALL: "🤖",
+        SpanKind.TOOL_CALL: "🔧",
+        SpanKind.MEMORY_READ: "📖",
+        SpanKind.MEMORY_WRITE: "✏",
+        SpanKind.AGENT_STEP: "~",
+        SpanKind.RETRIEVAL: "?",
+        SpanKind.EMBEDDING: "#",
+        SpanKind.CUSTOM: "*",
+    }
+else:
+    SPAN_KIND_ICONS = {
+        SpanKind.LLM_CALL: "[llm]",
+        SpanKind.TOOL_CALL: "[tool]",
+        SpanKind.MEMORY_READ: "[mem-r]",
+        SpanKind.MEMORY_WRITE: "[mem-w]",
+        SpanKind.AGENT_STEP: "[agent]",
+        SpanKind.RETRIEVAL: "[retr]",
+        SpanKind.EMBEDDING: "[embed]",
+        SpanKind.CUSTOM: "[*]",
+    }
+
 console = Console()
 err_console = Console(stderr=True)
 
 CONFIG_PATH = Path.home() / ".traceai" / "config.toml"
-
-SPAN_KIND_ICONS: dict[str, str] = {
-    SpanKind.LLM_CALL: "🤖",
-    SpanKind.TOOL_CALL: "🔧",
-    SpanKind.MEMORY_READ: "📖",
-    SpanKind.MEMORY_WRITE: "✏️",
-    SpanKind.AGENT_STEP: "⚡",
-    SpanKind.RETRIEVAL: "🔍",
-    SpanKind.EMBEDDING: "🧮",
-    SpanKind.CUSTOM: "•",
-}
 
 STATUS_STYLES: dict[str, str] = {
     "ok": "green",
@@ -159,8 +179,8 @@ def list_traces(
         return
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    table.add_column("ID", style="dim", no_wrap=True)
-    table.add_column("Name")
+    table.add_column("ID", style="dim", no_wrap=True, min_width=8)
+    table.add_column("Name", min_width=12)
     table.add_column("Status", no_wrap=True)
     table.add_column("Spans", justify="right")
     table.add_column("LLM Calls", justify="right")
