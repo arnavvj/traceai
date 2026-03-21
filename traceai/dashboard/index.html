@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TraceAI Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f1a;
+      --sidebar: #1a1a2e;
+      --panel: #16213e;
+      --border: #2a2a4a;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #6366f1;
+      --ok: #22c55e;
+      --error: #ef4444;
+      --pending: #f59e0b;
+      --timeout: #f97316;
+      --hover: #1e2a4a;
+      --selected: #1e3a5f;
+      --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--sidebar);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+    .logo span { color: var(--text); }
+    .spacer { flex: 1; }
+    .header-controls { display: flex; align-items: center; gap: 8px; }
+    select, input[type="text"] {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--accent); }
+    button {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: var(--hover); }
+    button.primary { background: var(--accent); border-color: var(--accent); }
+    button.primary:hover { background: #4f46e5; }
+    label.auto-refresh { display: flex; align-items: center; gap: 5px; font-size: 0.83rem; color: var(--muted); cursor: pointer; }
+    label.auto-refresh input { cursor: pointer; accent-color: var(--accent); }
+
+    /* ── Main layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Trace list (left panel) ── */
+    .trace-list-panel {
+      width: 340px;
+      flex-shrink: 0;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .trace-list { flex: 1; overflow-y: auto; }
+    .trace-row {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .trace-row:hover { background: var(--hover); }
+    .trace-row.selected { background: var(--selected); border-left: 3px solid var(--accent); }
+    .trace-row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+    .trace-name { font-size: 0.9rem; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trace-meta { display: flex; gap: 8px; font-size: 0.76rem; color: var(--muted); }
+    .trace-id { font-family: var(--mono); font-size: 0.73rem; color: var(--muted); }
+
+    /* ── Status badges ── */
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-ok { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .badge-error { background: rgba(239,68,68,0.15); color: var(--error); }
+    .badge-pending { background: rgba(245,158,11,0.15); color: var(--pending); }
+    .badge-timeout { background: rgba(249,115,22,0.15); color: var(--timeout); }
+
+    /* ── Pagination ── */
+    .pagination {
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .pagination button { padding: 3px 10px; font-size: 0.8rem; }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Detail panel (right) ── */
+    .detail-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .detail-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .detail-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Trace header */
+    .trace-header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      flex-shrink: 0;
+    }
+    .trace-header-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .trace-header-name { font-size: 1.1rem; font-weight: 600; }
+    .trace-header-stats {
+      display: flex;
+      gap: 18px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .stat { display: flex; flex-direction: column; gap: 1px; }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { color: var(--text); font-family: var(--mono); font-size: 0.85rem; }
+
+    /* Span tree */
+    .span-section {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .span-tree-panel {
+      width: 320px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .span-tree { flex: 1; overflow-y: auto; padding: 6px 0; }
+    .span-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 0.83rem;
+      transition: background 0.1s;
+    }
+    .span-row:hover { background: var(--hover); }
+    .span-row.selected { background: var(--selected); }
+    .span-indent { flex-shrink: 0; }
+    .span-kind-badge {
+      font-size: 0.66rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .kind-llm_call    { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+    .kind-tool_call   { background: rgba(34,197,94,0.15); color: #86efac; }
+    .kind-agent_step  { background: rgba(251,191,36,0.15); color: #fde68a; }
+    .kind-memory_read, .kind-memory_write { background: rgba(236,72,153,0.15); color: #f9a8d4; }
+    .kind-retrieval   { background: rgba(14,165,233,0.15); color: #7dd3fc; }
+    .kind-embedding   { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+    .kind-custom      { background: rgba(148,163,184,0.1); color: #94a3b8; }
+    .span-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .span-dur { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
+
+    /* Span detail */
+    .span-detail-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+    }
+    .detail-section { margin-bottom: 16px; }
+    .detail-section-title {
+      font-size: 0.73rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .json-block {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--text);
+    }
+    .show-more {
+      margin-top: 4px;
+      font-size: 0.78rem;
+      color: var(--accent);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+    .show-more:hover { text-decoration: underline; background: none; }
+    .kv-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .kv-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .kv-table td:first-child { color: var(--muted); font-family: var(--mono); font-size: 0.76rem; width: 42%; }
+    .kv-table td:last-child { font-family: var(--mono); font-size: 0.78rem; word-break: break-all; }
+
+    /* Error block */
+    .error-block {
+      background: rgba(239,68,68,0.07);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: #fca5a5;
+      white-space: pre-wrap;
+    }
+
+    /* Error banner */
+    #error-banner {
+      display: none;
+      background: rgba(239,68,68,0.15);
+      border-bottom: 1px solid rgba(239,68,68,0.4);
+      color: #fca5a5;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+
+    /* Update nudge banner — sits inside the trace list panel, above the list */
+    #update-banner {
+      display: none;
+      background: rgba(0,255,128,0.12);
+      border-bottom: 2px solid rgba(0,255,128,0.6);
+      color: #00ff80;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s;
+      flex-shrink: 0;
+      letter-spacing: 0.01em;
+    }
+    #update-banner:hover { background: rgba(0,255,128,0.2); }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a6a; }
+  </style>
+</head>
+<body>
+
+<div id="error-banner">Cannot reach TraceAI server. Is it still running?</div>
+
+<header>
+  <div class="logo">Trace<span>AI</span></div>
+  <div class="spacer"></div>
+  <div class="header-controls">
+    <select id="status-filter">
+      <option value="">All statuses</option>
+      <option value="ok">OK</option>
+      <option value="error">Error</option>
+      <option value="pending">Pending</option>
+      <option value="timeout">Timeout</option>
+    </select>
+    <input type="text" id="search-input" placeholder="Filter by name..." style="width:180px" />
+    <button class="primary" onclick="onRefresh()">Refresh</button>
+    <label class="auto-refresh">
+      <input type="checkbox" id="auto-refresh-toggle" onchange="onAutoRefreshToggle()" />
+      Auto-refresh (15s)
+    </label>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Left: trace list -->
+  <div class="trace-list-panel">
+    <div class="panel-header">
+      <span>Traces</span>
+      <span id="trace-count" style="font-weight:400"></span>
+    </div>
+    <div id="update-banner" onclick="onApplyUpdate()">&#8593; New traces available — click to refresh</div>
+    <div class="trace-list" id="trace-list"></div>
+    <div class="pagination">
+      <button id="btn-prev" onclick="onPrev()" disabled>&#8592; Prev</button>
+      <span id="pagination-label"></span>
+      <button id="btn-next" onclick="onNext()">Next &#8594;</button>
+    </div>
+  </div>
+
+  <!-- Right: detail -->
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-empty" id="detail-empty">Select a trace to inspect</div>
+    <div class="detail-content" id="detail-content" style="display:none">
+      <div class="trace-header" id="trace-header"></div>
+      <div class="span-section">
+        <div class="span-tree-panel">
+          <div class="panel-header">Spans</div>
+          <div class="span-tree" id="span-tree"></div>
+        </div>
+        <div class="span-detail-panel" id="span-detail">
+          <div style="color:var(--muted);font-size:0.85rem;margin-top:20px">Select a span to see details</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  const PAGE_LIMIT = 25;
+  const POLL_INTERVAL_MS = 15000;
+  let state = {
+    offset: 0,
+    status: null,
+    search: "",
+    traces: [],
+    pendingTraces: null,   // fetched quietly by background poll, not yet applied
+    selectedTraceId: null,
+    selectedSpanId: null,
+    spans: [],
+    autoRefreshTimer: null,
+  };
+
+  // ── Fetch helpers ──────────────────────────────────────────────────────────
+  async function apiFetch(url) {
+    try {
+      const res = await fetch(url);
+      document.getElementById("error-banner").style.display = "none";
+      return res;
+    } catch (e) {
+      document.getElementById("error-banner").style.display = "block";
+      return null;
+    }
+  }
+
+  async function fetchTraces() {
+    const params = new URLSearchParams({
+      limit: PAGE_LIMIT,
+      offset: state.offset,
+    });
+    if (state.status) params.set("status", state.status);
+    const res = await apiFetch(`/api/traces?${params}`);
+    if (!res) return;
+    const data = await res.json();
+    state.traces = data.traces;
+    state.pendingTraces = null;
+    document.getElementById("update-banner").style.display = "none";
+    renderTraceList();
+    renderPagination();
+  }
+
+  // Silent background poll — fetches but does NOT touch the UI.
+  // Shows the update banner only if the trace list actually changed.
+  async function pollTracesSilently() {
+    const params = new URLSearchParams({
+      limit: PAGE_LIMIT,
+      offset: state.offset,
+    });
+    if (state.status) params.set("status", state.status);
+    const res = await apiFetch(`/api/traces?${params}`);
+    if (!res) return;
+    const data = await res.json();
+    const incoming = data.traces;
+
+    // Compare by trace_id + status — if anything differs, show the banner
+    const currentSig = state.traces.map(t => t.trace_id + t.status).join(",");
+    const incomingSig = incoming.map(t => t.trace_id + t.status).join(",");
+    if (currentSig !== incomingSig) {
+      state.pendingTraces = incoming;
+      document.getElementById("update-banner").style.display = "block";
+    }
+  }
+
+  // Apply the pending update when user clicks the banner
+  function onApplyUpdate() {
+    if (!state.pendingTraces) return;
+    state.traces = state.pendingTraces;
+    state.pendingTraces = null;
+    document.getElementById("update-banner").style.display = "none";
+    renderTraceList();
+    renderPagination();
+  }
+
+  async function fetchSpans(traceId) {
+    const res = await apiFetch(`/api/traces/${traceId}/spans`);
+    if (!res) return;
+    const data = await res.json();
+    state.spans = data.spans;
+    state.selectedSpanId = null;
+    renderSpanTree();
+    renderSpanDetail(null);
+  }
+
+  // ── Renderers ─────────────────────────────────────────────────────────────
+  function statusBadge(status) {
+    return `<span class="badge badge-${status}">${status}</span>`;
+  }
+
+  function kindBadge(kind) {
+    const label = kind.replace("_", " ");
+    return `<span class="span-kind-badge kind-${kind}">${label}</span>`;
+  }
+
+  function fmtDuration(ms) {
+    if (ms == null) return "—";
+    if (ms < 1000) return ms.toFixed(0) + "ms";
+    return (ms / 1000).toFixed(2) + "s";
+  }
+
+  function fmtDatetime(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleString();
+  }
+
+  function fmtTokens(meta) {
+    if (!meta) return null;
+    const i = meta["gen_ai.usage.input_tokens"];
+    const o = meta["gen_ai.usage.output_tokens"];
+    if (i == null && o == null) return null;
+    return `${i ?? "?"} in / ${o ?? "?"} out`;
+  }
+
+  function renderTraceList() {
+    const el = document.getElementById("trace-list");
+    const search = state.search.toLowerCase();
+    const filtered = search
+      ? state.traces.filter(t => t.name.toLowerCase().includes(search))
+      : state.traces;
+
+    document.getElementById("trace-count").textContent = `${filtered.length} shown`;
+
+    if (filtered.length === 0) {
+      el.innerHTML = `<div style="padding:20px;color:var(--muted);font-size:0.85rem;text-align:center">No traces found</div>`;
+      return;
+    }
+
+    el.innerHTML = filtered.map(t => {
+      const selected = t.trace_id === state.selectedTraceId ? " selected" : "";
+      const dur = fmtDuration(t.duration_ms);
+      const tokens = t.total_tokens != null ? `${t.total_tokens} tok` : "";
+      return `
+        <div class="trace-row${selected}" onclick="onTraceClick('${t.trace_id}')">
+          <div class="trace-row-top">
+            <span class="trace-name">${escHtml(t.name)}</span>
+            ${statusBadge(t.status)}
+          </div>
+          <div class="trace-meta">
+            <span class="trace-id">${t.trace_id.slice(0, 8)}</span>
+            <span>${dur}</span>
+            ${t.span_count ? `<span>${t.span_count} spans</span>` : ""}
+            ${tokens ? `<span>${tokens}</span>` : ""}
+            <span>${fmtDatetime(t.started_at)}</span>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderPagination() {
+    const label = document.getElementById("pagination-label");
+    const prev = document.getElementById("btn-prev");
+    const next = document.getElementById("btn-next");
+    const start = state.offset + 1;
+    const end = state.offset + state.traces.length;
+    label.textContent = state.traces.length ? `${start}–${end}` : "0";
+    prev.disabled = state.offset === 0;
+    next.disabled = state.traces.length < PAGE_LIMIT;
+  }
+
+  function renderTraceHeader(trace) {
+    const el = document.getElementById("trace-header");
+    const tokens = fmtTokens(trace.metadata);
+    el.innerHTML = `
+      <div class="trace-header-top">
+        <span class="trace-header-name">${escHtml(trace.name)}</span>
+        ${statusBadge(trace.status)}
+      </div>
+      <div class="trace-header-stats">
+        <div class="stat"><span class="stat-label">Trace ID</span><span class="stat-value">${trace.trace_id.slice(0,16)}…</span></div>
+        <div class="stat"><span class="stat-label">Duration</span><span class="stat-value">${fmtDuration(trace.duration_ms)}</span></div>
+        <div class="stat"><span class="stat-label">Spans</span><span class="stat-value">${trace.span_count}</span></div>
+        <div class="stat"><span class="stat-label">LLM calls</span><span class="stat-value">${trace.llm_call_count}</span></div>
+        ${tokens ? `<div class="stat"><span class="stat-label">Tokens</span><span class="stat-value">${tokens}</span></div>` : ""}
+        <div class="stat"><span class="stat-label">Started</span><span class="stat-value">${fmtDatetime(trace.started_at)}</span></div>
+      </div>`;
+  }
+
+  function buildSpanTree(spans) {
+    const byParent = {};
+    for (const s of spans) {
+      const key = s.parent_span_id || "__root__";
+      if (!byParent[key]) byParent[key] = [];
+      byParent[key].push(s);
+    }
+    return byParent;
+  }
+
+  function renderSpanTree() {
+    const el = document.getElementById("span-tree");
+    if (!state.spans.length) {
+      el.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:0.82rem">No spans</div>`;
+      return;
+    }
+    const byParent = buildSpanTree(state.spans);
+
+    function renderChildren(parentId, depth) {
+      const children = byParent[parentId] || [];
+      return children.map(s => {
+        const selected = s.span_id === state.selectedSpanId ? " selected" : "";
+        const indent = "  ".repeat(depth * 2);
+        const statusDot = s.status === "error"
+          ? `<span style="color:var(--error);font-size:0.7rem">●</span>`
+          : "";
+        return `
+          <div class="span-row${selected}" onclick="onSpanClick('${s.span_id}')">
+            <span class="span-indent" style="width:${depth * 14}px;flex-shrink:0"></span>
+            ${kindBadge(s.kind)}
+            <span class="span-name">${escHtml(s.name)}${statusDot}</span>
+            <span class="span-dur">${fmtDuration(s.duration_ms)}</span>
+          </div>
+          ${renderChildren(s.span_id, depth + 1)}`;
+      }).join("");
+    }
+
+    el.innerHTML = renderChildren("__root__", 0);
+  }
+
+  function renderSpanDetail(span) {
+    const el = document.getElementById("span-detail");
+    if (!span) {
+      el.innerHTML = `<div style="color:var(--muted);font-size:0.85rem;margin-top:20px">Select a span to see details</div>`;
+      return;
+    }
+
+    const sections = [];
+
+    // Summary table
+    const rows = [
+      ["Span ID", span.span_id],
+      ["Kind", span.kind],
+      ["Status", span.status],
+      ["Started", fmtDatetime(span.started_at)],
+      ["Duration", fmtDuration(span.duration_ms)],
+    ];
+    if (span.parent_span_id) rows.push(["Parent", span.parent_span_id]);
+    sections.push(`
+      <div class="detail-section">
+        <div class="detail-section-title">Summary</div>
+        <table class="kv-table">${rows.map(([k,v]) => `<tr><td>${k}</td><td>${escHtml(String(v ?? "—"))}</td></tr>`).join("")}</table>
+      </div>`);
+
+    // Inputs
+    if (span.inputs) {
+      sections.push(jsonSection("Inputs", span.inputs));
+    }
+
+    // Outputs
+    if (span.outputs) {
+      sections.push(jsonSection("Outputs", span.outputs));
+    }
+
+    // Metadata
+    if (span.metadata) {
+      sections.push(jsonSection("Metadata", span.metadata));
+    }
+
+    // Error
+    if (span.error) {
+      const tb = span.error.traceback || "";
+      sections.push(`
+        <div class="detail-section">
+          <div class="detail-section-title">Error</div>
+          <div class="error-block">${escHtml(span.error.exception_type + ": " + span.error.message)}${tb ? "\n\n" + escHtml(tb) : ""}</div>
+        </div>`);
+    }
+
+    el.innerHTML = sections.join("");
+  }
+
+  function jsonSection(title, obj) {
+    const full = JSON.stringify(obj, null, 2);
+    const MAX = 2000;
+    const truncated = full.length > MAX;
+    const display = truncated ? full.slice(0, MAX) + "\n…" : full;
+    const id = "jb_" + Math.random().toString(36).slice(2);
+    const showMoreBtn = truncated
+      ? `<button class="show-more" onclick="document.getElementById('${id}').textContent=JSON.stringify(${JSON.stringify(obj)},null,2);this.remove()">Show more</button>`
+      : "";
+    return `
+      <div class="detail-section">
+        <div class="detail-section-title">${title}</div>
+        <pre class="json-block" id="${id}">${escHtml(display)}</pre>
+        ${showMoreBtn}
+      </div>`;
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ── Event handlers ─────────────────────────────────────────────────────────
+  async function onTraceClick(traceId) {
+    state.selectedTraceId = traceId;
+    renderTraceList();
+
+    const res = await apiFetch(`/api/traces/${traceId}`);
+    if (!res) return;
+    const data = await res.json();
+
+    document.getElementById("detail-empty").style.display = "none";
+    document.getElementById("detail-content").style.display = "flex";
+    renderTraceHeader(data.trace);
+    await fetchSpans(traceId);
+  }
+
+  function onSpanClick(spanId) {
+    state.selectedSpanId = spanId;
+    const span = state.spans.find(s => s.span_id === spanId);
+    renderSpanTree();
+    renderSpanDetail(span || null);
+  }
+
+  async function onRefresh() {
+    // Explicit refresh button — always applies immediately
+    await fetchTraces();
+    if (state.selectedTraceId) {
+      await fetchSpans(state.selectedTraceId);
+    }
+  }
+
+  function onStatusFilter(status) {
+    state.status = status || null;
+    state.offset = 0;
+    fetchTraces();
+  }
+
+  function onPrev() {
+    state.offset = Math.max(0, state.offset - PAGE_LIMIT);
+    fetchTraces();
+  }
+
+  function onNext() {
+    state.offset += PAGE_LIMIT;
+    fetchTraces();
+  }
+
+  function onAutoRefreshToggle() {
+    const checked = document.getElementById("auto-refresh-toggle").checked;
+    if (checked) {
+      // Poll silently — never disrupts the current view
+      state.autoRefreshTimer = setInterval(pollTracesSilently, POLL_INTERVAL_MS);
+    } else {
+      clearInterval(state.autoRefreshTimer);
+      state.autoRefreshTimer = null;
+      // Hide banner if polling is turned off
+      state.pendingTraces = null;
+      document.getElementById("update-banner").style.display = "none";
+    }
+  }
+
+  // Wire up status filter
+  document.getElementById("status-filter").addEventListener("change", function() {
+    onStatusFilter(this.value);
+  });
+
+  // Wire up search
+  let searchDebounce;
+  document.getElementById("search-input").addEventListener("input", function() {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.search = this.value;
+      renderTraceList();
+    }, 200);
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  fetchTraces();
+</script>
+</body>
+</html>
