@@ -239,10 +239,35 @@ class TestDeleteCommand:
 
 
 class TestOpenCommand:
-    def test_open_shows_placeholder(self) -> None:
-        result = runner.invoke(app, ["open"])
+    def test_open_starts_server(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """open command starts server and prints URL; monkeypatch avoids actual bind."""
+        started: list[dict] = []
+
+        def fake_run_server(
+            db_path: Path | None = None,
+            host: str = "127.0.0.1",
+            port: int = 8765,
+        ) -> None:
+            started.append({"db_path": db_path, "host": host, "port": port})
+
+        monkeypatch.setattr("traceai.server.run_server", fake_run_server)
+        # Also patch webbrowser so CI doesn't open a browser
+        import webbrowser
+
+        monkeypatch.setattr(webbrowser, "open", lambda url: None)
+
+        db = tmp_path / "test.db"
+        result = runner.invoke(app, ["open", "--no-browser", "--db", str(db)])
         assert result.exit_code == 0
-        assert "Phase 5" in result.output
+        assert "http://127.0.0.1:8765" in result.output
+        assert len(started) == 1
+
+    def test_open_custom_port(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("traceai.server.run_server", lambda **_: None)
+        db = tmp_path / "test.db"
+        result = runner.invoke(app, ["open", "--no-browser", "--port", "9000", "--db", str(db)])
+        assert result.exit_code == 0
+        assert "9000" in result.output
 
 
 # ---------------------------------------------------------------------------

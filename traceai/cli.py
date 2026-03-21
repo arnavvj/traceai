@@ -311,12 +311,32 @@ def delete_trace(
 
 
 @app.command("open")
-def open_dashboard() -> None:
-    """Launch the TraceAI web dashboard (Phase 5)."""
-    console.print(
-        "Dashboard coming in Phase 5 — use [bold]traceai list[/bold] and "
-        "[bold]traceai inspect[/bold] for now."
-    )
+def open_dashboard(
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 8765,
+    host: Annotated[str, typer.Option("--host", help="Host to bind")] = "127.0.0.1",
+    no_browser: Annotated[
+        bool, typer.Option("--no-browser", help="Don't open browser automatically")
+    ] = False,
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
+) -> None:
+    """Launch the TraceAI web dashboard."""
+    import threading
+    import webbrowser
+
+    from traceai.server import run_server
+
+    store = _get_store(db)
+    url = f"http://{host}:{port}"
+    console.print(f"[bold]TraceAI dashboard[/bold] → [cyan]{url}[/cyan]")
+    console.print("Press [bold]Ctrl+C[/bold] to stop.\n")
+
+    if not no_browser:
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    try:
+        run_server(db_path=store.db_path, host=host, port=port)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Dashboard stopped.[/yellow]")
 
 
 @app.command("config")
