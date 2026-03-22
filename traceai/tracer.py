@@ -353,6 +353,27 @@ class Tracer:
         else:
             # Status was set manually (e.g. via record_error) — just close timing.
             span.close(status=span.status)
+
+        # Inject per-span cost breakdown into metadata for LLM_CALL spans.
+        # Runs after set_metadata() in integrations, so token keys are already present.
+        if span.kind == SpanKind.LLM_CALL and span.metadata is not None:
+            from traceai.costs import get_cost_usd  # deferred — same pattern as _finalize_trace
+
+            input_tok = span.metadata.get("gen_ai.usage.input_tokens")
+            output_tok = span.metadata.get("gen_ai.usage.output_tokens")
+            model = span.metadata.get("gen_ai.request.model")
+            if (
+                isinstance(input_tok, int)
+                and isinstance(output_tok, int)
+                and isinstance(model, str)
+            ):  # noqa: E501
+                input_cost = get_cost_usd(model, input_tok, 0)
+                output_cost = get_cost_usd(model, 0, output_tok)
+                if input_cost is not None and output_cost is not None:
+                    span.metadata["gen_ai.usage.input_cost_usd"] = input_cost
+                    span.metadata["gen_ai.usage.output_cost_usd"] = output_cost
+                    span.metadata["gen_ai.usage.call_cost_usd"] = input_cost + output_cost
+
         _current_span_id.reset(tok_span)
         _current_trace_id.reset(tok_trace)
         # Register the closed span so _finalize_trace can compute counters.

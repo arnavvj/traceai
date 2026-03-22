@@ -617,3 +617,48 @@ class TestTokenCostAggregation:
         await fn()
         trace = store.list_traces()[0]
         assert trace.total_tokens == 65  # (15+35) + (5+10)
+
+    def test_span_metadata_contains_cost_breakdown(self, tracer: Tracer, store: TraceStore) -> None:
+        """All three per-span cost keys are injected into metadata for known models."""
+
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o-mini",
+                        "gen_ai.usage.input_tokens": 100,
+                        "gen_ai.usage.output_tokens": 50,
+                    }
+                )
+
+        fn()
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        meta = spans[0].metadata
+        assert meta is not None
+        assert meta["gen_ai.usage.input_cost_usd"] == pytest.approx(0.15e-6 * 100)
+        assert meta["gen_ai.usage.output_cost_usd"] == pytest.approx(0.60e-6 * 50)
+        assert meta["gen_ai.usage.call_cost_usd"] == pytest.approx(0.15e-6 * 100 + 0.60e-6 * 50)
+
+    def test_span_metadata_no_cost_for_unknown_model(
+        self, tracer: Tracer, store: TraceStore
+    ) -> None:
+        """No cost keys are added when the model is not in any price source."""
+
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "not-a-real-model",
+                        "gen_ai.usage.input_tokens": 100,
+                        "gen_ai.usage.output_tokens": 50,
+                    }
+                )
+
+        fn()
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        meta = spans[0].metadata or {}
+        assert "gen_ai.usage.call_cost_usd" not in meta
+        assert "gen_ai.usage.input_cost_usd" not in meta
+        assert "gen_ai.usage.output_cost_usd" not in meta
