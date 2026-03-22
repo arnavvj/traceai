@@ -248,9 +248,34 @@ class Tracer:
 
     async def _finalize_trace(self, trace: Trace) -> None:
         """Persist trace after updating summary counters from the in-memory span registry."""
+        from traceai.costs import get_cost_usd  # deferred — avoids circular import at module load
+
         spans = self._span_registry.pop(trace.trace_id, [])
         trace.span_count = len(spans)
         trace.llm_call_count = sum(1 for s in spans if s.kind == SpanKind.LLM_CALL)
+
+        total_tokens = 0
+        total_cost: float = 0.0
+        any_tokens = False
+        any_cost = False
+        for s in spans:
+            if s.kind != SpanKind.LLM_CALL or s.metadata is None:
+                continue
+            input_tok = s.metadata.get("gen_ai.usage.input_tokens")
+            output_tok = s.metadata.get("gen_ai.usage.output_tokens")
+            model = s.metadata.get("gen_ai.request.model")
+            if isinstance(input_tok, int) and isinstance(output_tok, int):
+                total_tokens += input_tok + output_tok
+                any_tokens = True
+                if isinstance(model, str):
+                    span_cost = get_cost_usd(model, input_tok, output_tok)
+                    if span_cost is not None:
+                        total_cost += span_cost
+                        any_cost = True
+
+        trace.total_tokens = total_tokens if any_tokens else None
+        trace.total_cost_usd = total_cost if any_cost else None
+
         await self._store.save_trace(trace)
 
     # ------------------------------------------------------------------

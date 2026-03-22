@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import traceai.costs as _costs_module
 from traceai.models import SpanKind, SpanStatus
 from traceai.storage import TraceStore
 from traceai.tracer import Tracer
@@ -444,3 +445,175 @@ class TestContextAccessors:
 
     def test_current_span_id_outside_span(self, tracer: Tracer) -> None:
         assert tracer.current_span_id() is None
+
+
+# ------------------------------------------------------------------
+# Token + cost aggregation in _finalize_trace
+# ------------------------------------------------------------------
+
+# Minimal LiteLLM-format pricing dict for tests — no real HTTP calls.
+_FAKE_PRICES = {
+    "gpt-4o": {"input_cost_per_token": 2.50e-6, "output_cost_per_token": 10.00e-6},
+    "gpt-4o-mini": {"input_cost_per_token": 0.15e-6, "output_cost_per_token": 0.60e-6},
+}
+
+
+class TestTokenCostAggregation:
+    @pytest.fixture(autouse=True)
+    def patch_prices(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Prevent real HTTP/cache calls; provide deterministic pricing."""
+        monkeypatch.setattr(_costs_module, "_get_prices", lambda: _FAKE_PRICES)
+
+    def test_total_tokens_aggregated_from_two_llm_spans(
+        self, tracer: Tracer, store: TraceStore
+    ) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm-1", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o",
+                        "gen_ai.usage.input_tokens": 10,
+                        "gen_ai.usage.output_tokens": 20,
+                    }
+                )
+            with tracer.span("llm-2", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o",
+                        "gen_ai.usage.input_tokens": 10,
+                        "gen_ai.usage.output_tokens": 20,
+                    }
+                )
+
+        fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens == 60  # (10+20) * 2
+
+    def test_total_cost_computed_for_known_model(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o-mini",
+                        "gen_ai.usage.input_tokens": 100,
+                        "gen_ai.usage.output_tokens": 50,
+                    }
+                )
+
+        fn()
+        trace = store.list_traces()[0]
+        expected = 0.15e-6 * 100 + 0.60e-6 * 50
+        assert trace.total_cost_usd == pytest.approx(expected)
+
+    def test_total_cost_none_for_unknown_model(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "unknown-model-xyz",
+                        "gen_ai.usage.input_tokens": 50,
+                        "gen_ai.usage.output_tokens": 25,
+                    }
+                )
+
+        fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens == 75  # tokens still aggregated
+        assert trace.total_cost_usd is None
+
+    def test_total_tokens_none_when_no_llm_spans(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("tool", kind=SpanKind.TOOL_CALL):
+                pass
+
+        fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens is None
+        assert trace.total_cost_usd is None
+
+    def test_total_tokens_none_when_no_token_metadata(
+        self, tracer: Tracer, store: TraceStore
+    ) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL):
+                pass  # no metadata set
+
+        fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens is None
+        assert trace.total_cost_usd is None
+
+    def test_mixed_known_unknown_partial_cost(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("known", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o",
+                        "gen_ai.usage.input_tokens": 10,
+                        "gen_ai.usage.output_tokens": 5,
+                    }
+                )
+            with tracer.span("unknown", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "not-in-prices",
+                        "gen_ai.usage.input_tokens": 20,
+                        "gen_ai.usage.output_tokens": 10,
+                    }
+                )
+
+        fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens == 45  # (10+5) + (20+10)
+        # Cost only from the known model
+        expected = 2.50e-6 * 10 + 10.00e-6 * 5
+        assert trace.total_cost_usd == pytest.approx(expected)
+
+    def test_total_tokens_persisted_to_db(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        def fn() -> None:
+            with tracer.span("llm", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o-mini",
+                        "gen_ai.usage.input_tokens": 30,
+                        "gen_ai.usage.output_tokens": 15,
+                    }
+                )
+
+        fn()
+        # Round-trip: re-read from store to verify DB persistence
+        trace = store.list_traces()[0]
+        assert trace.total_tokens == 45
+        assert trace.total_cost_usd is not None
+
+    @pytest.mark.asyncio
+    async def test_async_total_tokens_aggregated(self, tracer: Tracer, store: TraceStore) -> None:
+        @tracer.trace
+        async def fn() -> None:
+            async with tracer.span("llm-a", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o",
+                        "gen_ai.usage.input_tokens": 15,
+                        "gen_ai.usage.output_tokens": 35,
+                    }
+                )
+            async with tracer.span("llm-b", kind=SpanKind.LLM_CALL) as s:
+                s.set_metadata(
+                    {
+                        "gen_ai.request.model": "gpt-4o",
+                        "gen_ai.usage.input_tokens": 5,
+                        "gen_ai.usage.output_tokens": 10,
+                    }
+                )
+
+        await fn()
+        trace = store.list_traces()[0]
+        assert trace.total_tokens == 65  # (15+35) + (5+10)
