@@ -244,3 +244,34 @@ class TestGetSpansEndpoint:
         res = await client.get(f"/api/traces/{sample_trace.trace_id}/spans")
         returned_kinds = {s["kind"] for s in res.json()["spans"]}
         assert returned_kinds == {k.value for k in SpanKind}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/traces?q= (server-side search)
+# ---------------------------------------------------------------------------
+
+
+class TestSearchParam:
+    async def test_q_filters_by_name(self, client: AsyncClient, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="research-agent", status=SpanStatus.OK))
+        await store.save_trace(Trace(name="summarize-agent", status=SpanStatus.OK))
+        res = await client.get("/api/traces?q=research")
+        assert res.status_code == 200
+        traces = res.json()["traces"]
+        assert len(traces) == 1
+        assert traces[0]["name"] == "research-agent"
+
+    async def test_q_empty_string_returns_all(self, client: AsyncClient, store: TraceStore) -> None:
+        for i in range(3):
+            await store.save_trace(Trace(name=f"agent-{i}", status=SpanStatus.OK))
+        res = await client.get("/api/traces?q=")
+        assert res.status_code == 200
+        assert len(res.json()["traces"]) == 3
+
+    async def test_q_no_match_returns_empty_list(
+        self, client: AsyncClient, store: TraceStore
+    ) -> None:
+        await store.save_trace(Trace(name="research-agent", status=SpanStatus.OK))
+        res = await client.get("/api/traces?q=zzznomatch")
+        assert res.status_code == 200
+        assert res.json()["traces"] == []

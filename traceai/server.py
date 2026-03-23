@@ -6,12 +6,14 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from traceai.models import Span, SpanStatus, Trace
 from traceai.storage import TraceStore
 
-_DASHBOARD_HTML = Path(__file__).parent / "dashboard" / "index.html"
+_DIST_DIR = Path(__file__).parent / "dashboard" / "dist"
+_LEGACY_HTML = Path(__file__).parent / "dashboard" / "index.html"
 
 _store: TraceStore | None = None
 
@@ -59,6 +61,12 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Mount pre-built React assets when the dist/ bundle is present.
+    # Falls back gracefully to vanilla index.html when running from source
+    # without a frontend build (Python-only contributors, CI test jobs).
+    if (_DIST_DIR / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=_DIST_DIR / "assets"), name="assets")
+
     _valid_statuses = {s.value for s in SpanStatus}
 
     # ------------------------------------------------------------------
@@ -67,7 +75,8 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def dashboard() -> FileResponse:
-        return FileResponse(_DASHBOARD_HTML)
+        html = _DIST_DIR / "index.html"
+        return FileResponse(str(html) if html.exists() else str(_LEGACY_HTML))
 
     # ------------------------------------------------------------------
     # Traces
@@ -78,6 +87,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
         status: Annotated[str | None, Query()] = None,
+        q: Annotated[str | None, Query()] = None,
         store: TraceStore = Depends(get_store),
     ) -> TracesResponse:
         if status is not None and status not in _valid_statuses:
@@ -85,7 +95,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                 status_code=422,
                 detail=f"Invalid status '{status}'. Must be one of: {sorted(_valid_statuses)}",
             )
-        traces = await store.alist_traces(limit=limit, offset=offset, status=status)
+        traces = await store.alist_traces(limit=limit, offset=offset, status=status, q=q)
         return TracesResponse(traces=traces, limit=limit, offset=offset)
 
     @app.get("/api/traces/{trace_id}", response_model=TraceResponse)

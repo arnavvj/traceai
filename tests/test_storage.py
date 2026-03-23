@@ -198,3 +198,53 @@ class TestAsyncTraceStore:
         assert result.outputs is None
         assert result.metadata is None
         assert result.total_tokens is None
+
+
+# ------------------------------------------------------------------
+# Search tests
+# ------------------------------------------------------------------
+
+
+class TestSearchTraces:
+    @pytest.mark.asyncio
+    async def test_q_matches_name_substring(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="research-agent"))
+        await store.save_trace(Trace(name="summarize-agent"))
+        results = await store.alist_traces(q="research")
+        assert len(results) == 1
+        assert results[0].name == "research-agent"
+
+    @pytest.mark.asyncio
+    async def test_q_is_case_insensitive(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="MyAgent"))
+        results = await store.alist_traces(q="myagent")
+        assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_q_with_no_match_returns_empty(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="research-agent"))
+        results = await store.alist_traces(q="zzznomatch")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_q_combined_with_status_filter(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="search-ok", status=SpanStatus.OK))
+        await store.save_trace(Trace(name="search-err", status=SpanStatus.ERROR))
+        await store.save_trace(Trace(name="other-ok", status=SpanStatus.OK))
+        results = await store.alist_traces(q="search", status="ok")
+        assert len(results) == 1
+        assert results[0].name == "search-ok"
+
+    @pytest.mark.asyncio
+    async def test_q_none_returns_all(self, store: TraceStore) -> None:
+        for i in range(3):
+            await store.save_trace(Trace(name=f"agent-{i}"))
+        results = await store.alist_traces(q=None)
+        assert len(results) == 3
+
+    def test_sync_q_matches_name_substring(self, store: TraceStore) -> None:
+        asyncio.run(store.save_trace(Trace(name="sync-research")))
+        asyncio.run(store.save_trace(Trace(name="sync-other")))
+        results = store.list_traces(q="research")
+        assert len(results) == 1
+        assert results[0].name == "sync-research"
