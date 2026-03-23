@@ -251,12 +251,19 @@ class TraceStore:
         limit: int = 50,
         offset: int = 0,
         status: str | None = None,
+        q: str | None = None,
     ) -> list[Trace]:
-        query = "SELECT * FROM traces"
+        conditions: list[str] = []
         params: list[Any] = []
         if status:
-            query += " WHERE status = ?"
+            conditions.append("status = ?")
             params.append(status)
+        if q:
+            conditions.append("name LIKE ?")
+            params.append(f"%{q}%")
+        query = "SELECT * FROM traces"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY started_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
@@ -295,12 +302,19 @@ class TraceStore:
         limit: int = 50,
         offset: int = 0,
         status: str | None = None,
+        q: str | None = None,
     ) -> list[Trace]:
-        query = "SELECT * FROM traces"
+        conditions: list[str] = []
         params: list[Any] = []
         if status:
-            query += " WHERE status = ?"
+            conditions.append("status = ?")
             params.append(status)
+        if q:
+            conditions.append("name LIKE ?")
+            params.append(f"%{q}%")
+        query = "SELECT * FROM traces"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY started_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
