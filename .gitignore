@@ -194,6 +194,12 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# Node / frontend build
+dashboard/node_modules/
+# React build output lives inside the Python package but is built by CI,
+# never committed — Hatchling picks it up from disk during wheel creation.
+traceai/dashboard/dist/
+
 # PyPI configuration file
 .pypirc
 

@@ -36,6 +36,28 @@ jobs:
       - name: Run tests
         run: pytest --tb=short -q
 
+  frontend:
+    name: Frontend (build + typecheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: cd dashboard && npm ci
+
+      - name: Build
+        run: cd dashboard && npm run build
+
+      - name: TypeScript typecheck
+        run: cd dashboard && npx tsc --noEmit
+
   lint:
     name: Lint & type check
     runs-on: ubuntu-latest
