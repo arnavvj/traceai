@@ -102,9 +102,12 @@ def _resolve_api_key(provider: str) -> str | None:
     if _CONFIG_PATH.exists():
         try:
             cfg = tomllib.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-            val = cfg.get("keys", {}).get(toml_key)
-            if val:
-                return val  # type: ignore[return-value]
+            keys_section = cfg.get("keys", {})
+            toml_val: object = (
+                keys_section.get(toml_key) if isinstance(keys_section, dict) else None
+            )
+            if isinstance(toml_val, str) and toml_val:
+                return toml_val
         except Exception:
             pass
     return None

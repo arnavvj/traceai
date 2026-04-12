@@ -367,7 +367,8 @@ def config(
 
     if set_openai_key is not None:
         data = _read_config()
-        keys = dict(data.get("keys", {}))  # type: ignore[arg-type]
+        raw = data.get("keys", {})
+        keys: dict[str, str] = dict(raw) if isinstance(raw, dict) else {}
         keys["openai_api_key"] = set_openai_key
         data["keys"] = keys
         _write_config(data)
@@ -375,7 +376,8 @@ def config(
 
     if set_anthropic_key is not None:
         data = _read_config()
-        keys = dict(data.get("keys", {}))  # type: ignore[arg-type]
+        raw = data.get("keys", {})
+        keys = dict(raw) if isinstance(raw, dict) else {}
         keys["anthropic_api_key"] = set_anthropic_key
         data["keys"] = keys
         _write_config(data)
