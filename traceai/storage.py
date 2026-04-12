@@ -273,6 +273,46 @@ class TraceStore:
                 rows = await cursor.fetchall()
                 return [_row_to_trace(dict(r)) for r in rows]
 
+    async def acount_traces(
+        self,
+        *,
+        status: str | None = None,
+        q: str | None = None,
+    ) -> int:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        if q:
+            conditions.append("name LIKE ?")
+            params.append(f"%{q}%")
+        query = "SELECT COUNT(*) FROM traces"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+
+    async def aclear_all(self) -> int:
+        """Delete every trace (cascades to spans). Returns count of traces deleted."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
+            async with db.execute("SELECT COUNT(*) FROM traces") as cursor:
+                row = await cursor.fetchone()
+                count = int(row[0]) if row else 0
+            await db.execute("DELETE FROM traces")
+            await db.commit()
+            return count
+
+    async def aget_span(self, span_id: str) -> Span | None:
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM spans WHERE span_id = ?", (span_id,)) as cursor:
+                row = await cursor.fetchone()
+                return _row_to_span(dict(row)) if row else None
+
     async def aget_spans(self, trace_id: str) -> list[Span]:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
