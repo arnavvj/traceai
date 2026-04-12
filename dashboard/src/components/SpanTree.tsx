@@ -1,14 +1,14 @@
 import type { Span, SpanKind } from "../types/api";
 
 const KIND_STYLES: Record<SpanKind, string> = {
-  llm_call: "bg-indigo-900/50 text-indigo-300 border border-indigo-800",
-  tool_call: "bg-green-900/50 text-green-300 border border-green-800",
-  memory_read: "bg-purple-900/50 text-purple-300 border border-purple-800",
-  memory_write: "bg-purple-900/50 text-purple-300 border border-purple-800",
-  agent_step: "bg-blue-900/50 text-blue-300 border border-blue-800",
-  retrieval: "bg-cyan-900/50 text-cyan-300 border border-cyan-800",
-  embedding: "bg-yellow-900/50 text-yellow-300 border border-yellow-800",
-  custom: "bg-gray-800/50 text-gray-300 border border-gray-700",
+  llm_call:     "bg-indigo-100 text-indigo-700 border border-indigo-300 dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-800",
+  tool_call:    "bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800",
+  memory_read:  "bg-purple-100 text-purple-700 border border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-800",
+  memory_write: "bg-purple-100 text-purple-700 border border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-800",
+  agent_step:   "bg-blue-100 text-blue-700 border border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-800",
+  retrieval:    "bg-cyan-100 text-cyan-700 border border-cyan-300 dark:bg-cyan-900/50 dark:text-cyan-300 dark:border-cyan-800",
+  embedding:    "bg-yellow-100 text-yellow-700 border border-yellow-300 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-800",
+  custom:       "bg-slate-100 text-slate-600 border border-slate-300 dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-700",
 };
 
 function formatDuration(ms: number | null): string {

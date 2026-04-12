@@ -339,10 +339,23 @@ def open_dashboard(
         console.print("\n[yellow]Dashboard stopped.[/yellow]")
 
 
+def _mask_key(key: str) -> str:
+    """Show first 4 and last 4 chars, mask the rest."""
+    if len(key) <= 10:
+        return key[:2] + "***" + key[-2:]
+    return key[:4] + "***" + key[-4:]
+
+
 @app.command("config")
 def config(
     set_db: Annotated[
         Path | None, typer.Option("--set-db", help="Set default database path")
+    ] = None,
+    set_openai_key: Annotated[
+        str | None, typer.Option("--set-openai-key", help="Save OpenAI API key")
+    ] = None,
+    set_anthropic_key: Annotated[
+        str | None, typer.Option("--set-anthropic-key", help="Save Anthropic API key")
     ] = None,
 ) -> None:
     """Show or update TraceAI configuration."""
@@ -352,13 +365,47 @@ def config(
         _write_config(data)
         console.print(f"[green]Default database set to {data['db_path']}[/green]")
 
+    if set_openai_key is not None:
+        data = _read_config()
+        raw = data.get("keys", {})
+        keys: dict[str, str] = dict(raw) if isinstance(raw, dict) else {}
+        keys["openai_api_key"] = set_openai_key
+        data["keys"] = keys
+        _write_config(data)
+        console.print(f"[green]OpenAI API key saved ({_mask_key(set_openai_key)})[/green]")
+
+    if set_anthropic_key is not None:
+        data = _read_config()
+        raw = data.get("keys", {})
+        keys = dict(raw) if isinstance(raw, dict) else {}
+        keys["anthropic_api_key"] = set_anthropic_key
+        data["keys"] = keys
+        _write_config(data)
+        console.print(f"[green]Anthropic API key saved ({_mask_key(set_anthropic_key)})[/green]")
+
     cfg = _read_config()
     effective_db = str(cfg.get("db_path", str(_DEFAULT_DB_PATH)))
+
+    # Resolve key status from env + config (same priority as the server)
+    import os
+
+    keys_section: dict[str, str] = cfg.get("keys", {})  # type: ignore[assignment]
+
+    def _key_status(env_var: str, toml_key: str) -> str:
+        env_val = os.environ.get(env_var)
+        cfg_val = keys_section.get(toml_key)
+        if env_val:
+            return f"[green]{_mask_key(env_val)}[/green] (env)"
+        if cfg_val:
+            return f"[green]{_mask_key(cfg_val)}[/green] (config)"
+        return "[dim]not set[/dim]"
 
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column("Key", style="bold")
     table.add_column("Value")
     table.add_row("DB Path", effective_db)
+    table.add_row("OpenAI Key", _key_status("OPENAI_API_KEY", "openai_api_key"))
+    table.add_row("Anthropic Key", _key_status("ANTHROPIC_API_KEY", "anthropic_api_key"))
     table.add_row("Config File", str(CONFIG_PATH))
     table.add_row("Version", "0.1.0")
     console.print(table)
