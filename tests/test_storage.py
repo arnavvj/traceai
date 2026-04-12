@@ -313,7 +313,9 @@ class TestCountTraces:
 
 class TestGetSpan:
     @pytest.mark.asyncio
-    async def test_returns_span(self, store: TraceStore, sample_trace: Trace, sample_span: Span) -> None:
+    async def test_returns_span(
+        self, store: TraceStore, sample_trace: Trace, sample_span: Span
+    ) -> None:
         await store.save_trace(sample_trace)
         sample_span.close(status=SpanStatus.OK)
         await store.save_span(sample_span)

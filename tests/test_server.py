@@ -314,7 +314,9 @@ _MOCK_RESULT = {
 
 class TestReplaySpan:
     @pytest.fixture
-    async def saved_llm_span(self, store: TraceStore, sample_trace: Trace, sample_span: Span) -> Span:
+    async def saved_llm_span(
+        self, store: TraceStore, sample_trace: Trace, sample_span: Span
+    ) -> Span:
         await store.save_trace(sample_trace)
         sample_span.close(status=SpanStatus.OK)
         sample_span.metadata = {"gen_ai.system": "openai", "gen_ai.request.model": "gpt-4o"}
@@ -339,7 +341,8 @@ class TestReplaySpan:
     ) -> None:
         from unittest.mock import AsyncMock, patch
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(f"/api/spans/{saved_llm_span.span_id}/replay", json={})
         assert res.status_code == 200
         body = res.json()
@@ -359,7 +362,7 @@ class TestReplaySpan:
     async def test_replay_uses_messages_override(
         self, client: AsyncClient, saved_llm_span: Span
     ) -> None:
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         override = [{"role": "user", "content": "What is 2+2?"}]
         captured: list[list] = []
@@ -379,7 +382,7 @@ class TestReplaySpan:
     async def test_replay_uses_model_override(
         self, client: AsyncClient, saved_llm_span: Span
     ) -> None:
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         captured_models: list[str] = []
 
@@ -442,7 +445,8 @@ class TestReplayTrace:
     ) -> None:
         from unittest.mock import AsyncMock, patch
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/traces/{saved_trace_with_llm_spans.trace_id}/replay",
                 json={"model": "gpt-4o-mini"},
@@ -472,7 +476,8 @@ class TestReplayTrace:
     ) -> None:
         from unittest.mock import AsyncMock, patch
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/traces/{saved_trace_with_llm_spans.trace_id}/replay",
                 json={"model": "gpt-4o-mini"},
@@ -489,7 +494,8 @@ class TestReplayTrace:
         from unittest.mock import AsyncMock, patch
 
         original_id = saved_trace_with_llm_spans.trace_id
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/traces/{original_id}/replay",
                 json={"model": "gpt-4o-mini"},
@@ -505,7 +511,8 @@ class TestReplayTrace:
         from unittest.mock import AsyncMock, patch
 
         original_id = saved_trace_with_llm_spans.trace_id
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             # First replay
             res1 = await client.post(
                 f"/api/traces/{original_id}/replay",
@@ -545,7 +552,8 @@ class TestReplayTrace:
         )
         await store.save_span(llm)
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/traces/{trace.trace_id}/replay",
                 json={"model": "gpt-4o-mini"},
@@ -593,7 +601,8 @@ class TestGetProviders:
 
         import traceai.server
 
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        _skip = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _skip}
         with (
             patch.dict(os.environ, env, clear=True),
             patch.object(traceai.server, "_CONFIG_PATH", Path("/tmp/nonexistent.toml")),
@@ -618,7 +627,8 @@ class TestKeyManagement:
         import traceai.server
 
         config_path = tmp_path / "config.toml"
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        _skip = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _skip}
         with (
             patch.dict(os.environ, env, clear=True),
             patch.object(traceai.server, "_CONFIG_PATH", config_path),
@@ -640,7 +650,6 @@ class TestKeyManagement:
             assert keys["openai"]["source"] == "config"
 
     async def test_set_key_accepts_any_provider(self, client: AsyncClient, tmp_path: Path) -> None:
-        import os
         from unittest.mock import patch
 
         import traceai.server
@@ -662,7 +671,8 @@ class TestKeyManagement:
         import traceai.server
 
         config_path = tmp_path / "config.toml"
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        _skip = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _skip}
         with (
             patch.dict(os.environ, env, clear=True),
             patch.object(traceai.server, "_CONFIG_PATH", config_path),
@@ -676,14 +686,17 @@ class TestKeyManagement:
             assert body["openai"] is True
             assert body["anthropic"] is False
 
-    async def test_delete_key_removes_from_config(self, client: AsyncClient, tmp_path: Path) -> None:
+    async def test_delete_key_removes_from_config(
+        self, client: AsyncClient, tmp_path: Path
+    ) -> None:
         import os
         from unittest.mock import patch
 
         import traceai.server
 
         config_path = tmp_path / "config.toml"
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        _skip = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _skip}
         with (
             patch.dict(os.environ, env, clear=True),
             patch.object(traceai.server, "_CONFIG_PATH", config_path),
@@ -709,7 +722,8 @@ class TestKeyManagement:
         import traceai.server
 
         config_path = tmp_path / "nonexistent_dir" / "config.toml"
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        _skip = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _skip}
         with (
             patch.dict(os.environ, env, clear=True),
             patch.object(traceai.server, "_CONFIG_PATH", config_path),
@@ -750,7 +764,8 @@ class TestReplaySpanComparison:
     ) -> None:
         from unittest.mock import AsyncMock, patch
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/spans/{saved_llm_span_with_cost.span_id}/replay", json={}
             )
@@ -769,7 +784,8 @@ class TestReplaySpanComparison:
     ) -> None:
         from unittest.mock import AsyncMock, patch
 
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/spans/{saved_llm_span_with_cost.span_id}/replay", json={}
             )
@@ -787,7 +803,8 @@ class TestReplaySpanComparison:
         from unittest.mock import AsyncMock, patch
 
         original_trace_id = saved_llm_span_with_cost.trace_id
-        with patch("traceai.server._replay_openai_compat", new=AsyncMock(return_value=_MOCK_RESULT)):
+        mock = AsyncMock(return_value=_MOCK_RESULT)
+        with patch("traceai.server._replay_openai_compat", new=mock):
             res = await client.post(
                 f"/api/spans/{saved_llm_span_with_cost.span_id}/replay", json={}
             )
