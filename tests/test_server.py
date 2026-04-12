@@ -540,12 +540,16 @@ class TestReplayTrace:
         agent = Span(trace_id=trace.trace_id, name="agent", kind=SpanKind.AGENT_STEP)
         await store.save_span(agent)
         tool = Span(
-            trace_id=trace.trace_id, name="tool", kind=SpanKind.TOOL_CALL,
+            trace_id=trace.trace_id,
+            name="tool",
+            kind=SpanKind.TOOL_CALL,
             parent_span_id=agent.span_id,
         )
         await store.save_span(tool)
         llm = Span(
-            trace_id=trace.trace_id, name="llm", kind=SpanKind.LLM_CALL,
+            trace_id=trace.trace_id,
+            name="llm",
+            kind=SpanKind.LLM_CALL,
             parent_span_id=tool.span_id,
             inputs={"messages": [{"role": "user", "content": "hi"}]},
             metadata={"gen_ai.system": "openai", "gen_ai.request.model": "gpt-4o"},
@@ -868,9 +872,7 @@ class TestClearAllTraces:
         assert res.status_code == 200
         assert res.json()["deleted"] == 3
 
-    async def test_clear_empties_trace_list(
-        self, client: AsyncClient, store: TraceStore
-    ) -> None:
+    async def test_clear_empties_trace_list(self, client: AsyncClient, store: TraceStore) -> None:
         await store.save_trace(Trace(name="t", status=SpanStatus.OK))
         await client.delete("/api/traces")
         res = await client.get("/api/traces")
@@ -956,9 +958,7 @@ class TestCustomProviderKeys:
             assert "cohere" in body
             assert body["cohere"] is True
 
-    async def test_delete_custom_provider_key(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_delete_custom_provider_key(self, client: AsyncClient, tmp_path: Path) -> None:
         import os
         from unittest.mock import patch
 

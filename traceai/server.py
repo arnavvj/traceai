@@ -36,29 +36,37 @@ _OPENAI_COMPAT_BASE_URLS: dict[str, str] = {
 }
 
 # Well-known providers — always shown in the UI even when unconfigured.
-_WELL_KNOWN_PROVIDERS: list[str] = sorted(
-    list(_OPENAI_COMPAT_BASE_URLS) + ["anthropic"]
-)
+_WELL_KNOWN_PROVIDERS: list[str] = sorted(list(_OPENAI_COMPAT_BASE_URLS) + ["anthropic"])
 
 # Curated model lists per provider (returned by GET /api/models).
 _CURATED_MODELS: dict[str, list[str]] = {
     "openai": [
-        "gpt-4o", "gpt-4o-mini",
-        "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
-        "o3", "o3-mini", "o4-mini",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "o3",
+        "o3-mini",
+        "o4-mini",
     ],
     "anthropic": [
-        "claude-opus-4-6", "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
         "claude-haiku-4-5-20251001",
     ],
     "mistral": [
-        "mistral-large-latest", "mistral-medium-latest",
-        "mistral-small-latest", "open-mistral-nemo",
+        "mistral-large-latest",
+        "mistral-medium-latest",
+        "mistral-small-latest",
+        "open-mistral-nemo",
     ],
     "deepseek": ["deepseek-chat", "deepseek-reasoner"],
     "groq": [
-        "llama-3.3-70b-versatile", "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768", "gemma2-9b-it",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it",
     ],
     "together": [
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
@@ -68,7 +76,8 @@ _CURATED_MODELS: dict[str, list[str]] = {
         "accounts/fireworks/models/llama-v3p3-70b-instruct",
     ],
     "openrouter": [
-        "openai/gpt-4o", "anthropic/claude-sonnet-4-6",
+        "openai/gpt-4o",
+        "anthropic/claude-sonnet-4-6",
         "google/gemini-2.5-pro",
     ],
     "perplexity": ["sonar-pro", "sonar", "sonar-reasoning-pro"],
@@ -239,7 +248,9 @@ def _infer_provider(model: str) -> str:
         # Slash-prefixed models like "openai/gpt-4o" → likely openrouter
         prefix = ml.split("/")[0]
         if prefix in _OPENAI_COMPAT_BASE_URLS or prefix in (
-            "google", "meta-llama", "mistralai",
+            "google",
+            "meta-llama",
+            "mistralai",
         ):
             return "openrouter"
     return "openai"  # safe default — most providers are OpenAI-compatible
@@ -255,7 +266,9 @@ def _provider_span_name(provider: str) -> str:
 
 
 async def _replay_openai_compat(
-    messages: list[dict[str, Any]], model: str, provider: str,
+    messages: list[dict[str, Any]],
+    model: str,
+    provider: str,
 ) -> dict[str, Any]:
     """Replay via any OpenAI-compatible API (OpenAI, Mistral, DeepSeek, Groq, etc.)."""
     try:
@@ -270,7 +283,7 @@ async def _replay_openai_compat(
         raise HTTPException(
             status_code=422,
             detail=f"{provider.upper()}_API_KEY is not configured. "
-                   f"Add it via Settings or set the environment variable.",
+            f"Add it via Settings or set the environment variable.",
         )
     base_url = _OPENAI_COMPAT_BASE_URLS.get(provider, "https://api.openai.com/v1")
     client = _openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
@@ -278,11 +291,13 @@ async def _replay_openai_compat(
         resp = await client.chat.completions.create(model=model, messages=messages)  # type: ignore[arg-type]
     except _openai.AuthenticationError:
         raise HTTPException(
-            status_code=422, detail=f"{provider.upper()}_API_KEY is invalid",
+            status_code=422,
+            detail=f"{provider.upper()}_API_KEY is invalid",
         )
     except Exception as exc:
         raise HTTPException(
-            status_code=500, detail=f"{provider} call failed: {exc}",
+            status_code=500,
+            detail=f"{provider} call failed: {exc}",
         ) from exc
     return {
         "content": resp.choices[0].message.content,
@@ -299,14 +314,15 @@ async def _replay_anthropic(messages: list[dict[str, Any]], model: str) -> dict[
         import anthropic as _anthropic
     except ImportError:
         raise HTTPException(
-            status_code=422, detail="anthropic not installed — run: pip install anthropic",
+            status_code=422,
+            detail="anthropic not installed — run: pip install anthropic",
         )
     api_key = _resolve_api_key("anthropic")
     if not api_key:
         raise HTTPException(
             status_code=422,
             detail="ANTHROPIC_API_KEY is not configured. "
-                   "Add it via Settings or set the environment variable.",
+            "Add it via Settings or set the environment variable.",
         )
     system = next((m["content"] for m in messages if m.get("role") == "system"), None)
     chat_messages = [m for m in messages if m.get("role") != "system"]
@@ -332,7 +348,9 @@ async def _replay_anthropic(messages: list[dict[str, Any]], model: str) -> dict[
 
 
 async def _dispatch_replay(
-    messages: list[dict[str, Any]], model: str, provider: str,
+    messages: list[dict[str, Any]],
+    model: str,
+    provider: str,
 ) -> dict[str, Any]:
     """Route a replay request to the appropriate provider SDK."""
     if provider == "anthropic":
@@ -500,10 +518,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         original_model: str = (span.metadata or {}).get("gen_ai.request.model", "unknown")
         original_span_cost = (span.metadata or {}).get("gen_ai.usage.call_cost_usd")
-        original_tokens = (
-            (span.metadata or {}).get("gen_ai.usage.input_tokens", 0)
-            + (span.metadata or {}).get("gen_ai.usage.output_tokens", 0)
-        )
+        original_tokens = (span.metadata or {}).get("gen_ai.usage.input_tokens", 0) + (
+            span.metadata or {}
+        ).get("gen_ai.usage.output_tokens", 0)
 
         replay_tokens = result["input_tokens"] + result["output_tokens"]
         cost = get_cost_usd(result["model"], result["input_tokens"], result["output_tokens"])
