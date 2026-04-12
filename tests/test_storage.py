@@ -248,3 +248,80 @@ class TestSearchTraces:
         results = store.list_traces(q="research")
         assert len(results) == 1
         assert results[0].name == "sync-research"
+
+
+# ---------------------------------------------------------------------------
+# aget_span — single-span async lookup
+# ---------------------------------------------------------------------------
+
+
+class TestClearAll:
+    @pytest.mark.asyncio
+    async def test_clear_empty_returns_zero(self, store: TraceStore) -> None:
+        assert await store.aclear_all() == 0
+
+    @pytest.mark.asyncio
+    async def test_clear_returns_count_and_empties_db(self, store: TraceStore) -> None:
+        for i in range(3):
+            await store.save_trace(Trace(name=f"t-{i}"))
+        deleted = await store.aclear_all()
+        assert deleted == 3
+        assert await store.alist_traces() == []
+
+    @pytest.mark.asyncio
+    async def test_clear_cascades_spans(
+        self, store: TraceStore, sample_trace: Trace, sample_span: Span
+    ) -> None:
+        await store.save_trace(sample_trace)
+        await store.save_span(sample_span)
+        await store.aclear_all()
+        assert await store.aget_spans(sample_trace.trace_id) == []
+
+
+class TestCountTraces:
+    @pytest.mark.asyncio
+    async def test_count_empty(self, store: TraceStore) -> None:
+        assert await store.acount_traces() == 0
+
+    @pytest.mark.asyncio
+    async def test_count_all(self, store: TraceStore) -> None:
+        for i in range(5):
+            await store.save_trace(Trace(name=f"agent-{i}"))
+        assert await store.acount_traces() == 5
+
+    @pytest.mark.asyncio
+    async def test_count_with_status_filter(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="ok", status=SpanStatus.OK))
+        await store.save_trace(Trace(name="err", status=SpanStatus.ERROR))
+        await store.save_trace(Trace(name="ok2", status=SpanStatus.OK))
+        assert await store.acount_traces(status="ok") == 2
+        assert await store.acount_traces(status="error") == 1
+
+    @pytest.mark.asyncio
+    async def test_count_with_q_filter(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="research-agent"))
+        await store.save_trace(Trace(name="summarize-agent"))
+        assert await store.acount_traces(q="research") == 1
+
+    @pytest.mark.asyncio
+    async def test_count_with_status_and_q(self, store: TraceStore) -> None:
+        await store.save_trace(Trace(name="search-ok", status=SpanStatus.OK))
+        await store.save_trace(Trace(name="search-err", status=SpanStatus.ERROR))
+        await store.save_trace(Trace(name="other-ok", status=SpanStatus.OK))
+        assert await store.acount_traces(status="ok", q="search") == 1
+
+
+class TestGetSpan:
+    @pytest.mark.asyncio
+    async def test_returns_span(self, store: TraceStore, sample_trace: Trace, sample_span: Span) -> None:
+        await store.save_trace(sample_trace)
+        sample_span.close(status=SpanStatus.OK)
+        await store.save_span(sample_span)
+        result = await store.aget_span(sample_span.span_id)
+        assert result is not None
+        assert result.span_id == sample_span.span_id
+        assert result.kind == SpanKind.LLM_CALL
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_missing(self, store: TraceStore) -> None:
+        assert await store.aget_span("notexist") is None
