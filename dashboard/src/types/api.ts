@@ -54,8 +54,28 @@ export interface Trace {
   created_at: string;
 }
 
+export interface Message {
+  role: string;
+  content: string;
+}
+
+export interface TraceReplayRequest {
+  model: string;
+  provider?: string;
+}
+
+export interface TraceReplayResponse {
+  trace_id: string;
+  spans_replayed: number;
+  original_cost_usd: number | null;
+  replay_cost_usd: number | null;
+  original_tokens: number;
+  replay_tokens: number;
+}
+
 export interface TracesResponse {
   traces: Trace[];
+  total: number;
   limit: number;
   offset: number;
 }

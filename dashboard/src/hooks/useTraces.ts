@@ -7,6 +7,7 @@ const POLL_INTERVAL_MS = 15_000;
 
 interface UseTracesResult {
   traces: Trace[];
+  totalPages: number;
   loading: boolean;
   error: string | null;
   hasPending: boolean;
@@ -24,6 +25,7 @@ export function useTraces(params: {
   const { offset, status, q } = params;
 
   const [traces, setTraces] = useState<Trace[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingTraces, setPendingTraces] = useState<Trace[] | null>(null);
@@ -51,6 +53,7 @@ export function useTraces(params: {
           status: status || null,
           q: q || null,
         });
+        const pages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
         if (silent) {
           // Only surface if data actually changed vs what's displayed.
           const current = traceSignature(tracesRef.current);
@@ -62,6 +65,7 @@ export function useTraces(params: {
           setTraces(data.traces);
           setPendingTraces(null);
         }
+        setTotalPages(pages);
       } catch (err) {
         if (!silent) setError(err instanceof Error ? err.message : "Failed to load traces");
       } finally {
@@ -95,6 +99,7 @@ export function useTraces(params: {
 
   return {
     traces,
+    totalPages,
     loading,
     error,
     hasPending: pendingTraces !== null,
