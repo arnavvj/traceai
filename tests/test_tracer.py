@@ -662,3 +662,150 @@ class TestTokenCostAggregation:
         assert "gen_ai.usage.call_cost_usd" not in meta
         assert "gen_ai.usage.input_cost_usd" not in meta
         assert "gen_ai.usage.output_cost_usd" not in meta
+
+
+# ------------------------------------------------------------------
+# Sampling — sample_rate parameter + configure()
+# ------------------------------------------------------------------
+
+
+class TestSampling:
+    def test_default_sample_rate_is_one(self, store: TraceStore) -> None:
+        t = Tracer(store=store)
+        assert t._sample_rate == 1.0
+
+    def test_invalid_sample_rate_raises_on_tracer_init(self, store: TraceStore) -> None:
+        with pytest.raises(ValueError, match="sample_rate"):
+            Tracer(store=store, sample_rate=1.5)
+        with pytest.raises(ValueError, match="sample_rate"):
+            Tracer(store=store, sample_rate=-0.1)
+
+    def test_rate_one_captures_all_traces(self, store: TraceStore) -> None:
+        t = Tracer(store=store, sample_rate=1.0)
+
+        @t.trace
+        def fn() -> str:
+            return "ok"
+
+        fn()
+        fn()
+        fn()
+        assert len(store.list_traces()) == 3
+
+    def test_rate_zero_captures_no_traces(self, store: TraceStore) -> None:
+        """sample_rate=0.0 means random.random() >= 0.0 is always True — always sampled out."""
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace
+        def fn() -> str:
+            return "ok"
+
+        fn()
+        fn()
+        fn()
+        assert len(store.list_traces()) == 0
+
+    def test_rate_zero_function_still_returns_correctly(self, store: TraceStore) -> None:
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace
+        def fn(x: int) -> int:
+            return x * 2
+
+        assert fn(5) == 10
+
+    def test_per_trace_sample_rate_zero_captures_nothing(self, store: TraceStore) -> None:
+        """Per-trace sample_rate=0.0 overrides global rate=1.0."""
+        t = Tracer(store=store, sample_rate=1.0)
+
+        @t.trace(sample_rate=0.0)
+        def fn() -> None:
+            pass
+
+        fn()
+        assert len(store.list_traces()) == 0
+
+    def test_per_trace_sample_rate_overrides_global_zero(self, store: TraceStore) -> None:
+        """Per-trace sample_rate=1.0 overrides global rate=0.0 — trace IS captured."""
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace(sample_rate=1.0)
+        def fn() -> None:
+            pass
+
+        fn()
+        assert len(store.list_traces()) == 1
+
+    def test_spans_are_noop_when_trace_sampled_out(self, store: TraceStore) -> None:
+        """Child spans must not raise or persist when the parent trace is sampled out."""
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace
+        def fn() -> str:
+            with t.span("step") as span:
+                span.set_input({"x": 1})
+                span.set_output({"y": 2})
+            return "ok"
+
+        result = fn()
+        assert result == "ok"
+        assert len(store.list_traces()) == 0
+
+    def test_suppression_does_not_bleed_between_sequential_traces(self, store: TraceStore) -> None:
+        """A sampled-out trace must not suppress a subsequent trace on the same thread."""
+        t = Tracer(store=store, sample_rate=1.0)
+
+        @t.trace(sample_rate=0.0)
+        def skipped() -> None:
+            pass
+
+        @t.trace(sample_rate=1.0)
+        def captured() -> None:
+            pass
+
+        skipped()
+        captured()
+        traces = store.list_traces()
+        assert len(traces) == 1
+        assert traces[0].name == "captured"
+
+    @pytest.mark.asyncio
+    async def test_async_rate_zero_captures_nothing(self, store: TraceStore) -> None:
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace
+        async def fn() -> str:
+            return "ok"
+
+        result = await fn()
+        assert result == "ok"
+        assert len(store.list_traces()) == 0
+
+    @pytest.mark.asyncio
+    async def test_async_per_trace_rate_overrides_global(self, store: TraceStore) -> None:
+        t = Tracer(store=store, sample_rate=0.0)
+
+        @t.trace(sample_rate=1.0)
+        async def fn(x: int) -> int:
+            return x * 3
+
+        assert await fn(4) == 12
+        assert len(store.list_traces()) == 1
+
+    def test_configure_updates_global_tracer_sample_rate(self) -> None:
+        import traceai
+
+        original = traceai.tracer._sample_rate
+        try:
+            traceai.configure(sample_rate=0.25)
+            assert traceai.tracer._sample_rate == 0.25
+        finally:
+            traceai.configure(sample_rate=original)
+
+    def test_configure_raises_on_invalid_rate(self) -> None:
+        import traceai
+
+        with pytest.raises(ValueError, match="sample_rate"):
+            traceai.configure(sample_rate=2.0)
+        with pytest.raises(ValueError, match="sample_rate"):
+            traceai.configure(sample_rate=-1.0)

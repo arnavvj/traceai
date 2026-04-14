@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+import random
 from collections.abc import Callable
 from contextvars import ContextVar, Token
 from typing import Any, TypeVar
@@ -56,6 +57,8 @@ def _run_async(coro: Any) -> None:
 # ------------------------------------------------------------------
 _current_trace_id: ContextVar[str | None] = ContextVar("traceai_trace_id", default=None)
 _current_span_id: ContextVar[str | None] = ContextVar("traceai_span_id", default=None)
+_tracing_suppressed: ContextVar[bool] = ContextVar("traceai_suppressed", default=False)
+_current_experiment: ContextVar[str | None] = ContextVar("traceai_experiment", default=None)
 
 
 class SpanContext:
@@ -102,6 +105,69 @@ class SpanContext:
         self._span.metadata[f"tag.{key}"] = value
 
 
+class _NoOpSpanContext:
+    """
+    Returned by ``tracer.span()`` when the trace has been sampled out.
+
+    All mutating methods are silent no-ops so that application code runs
+    unchanged — only persistence is skipped.
+    """
+
+    span_id: str = ""
+    trace_id: str = ""
+
+    def set_input(self, data: dict[str, Any]) -> None:  # noqa: ARG002
+        pass
+
+    def set_output(self, data: dict[str, Any]) -> None:  # noqa: ARG002
+        pass
+
+    def set_metadata(self, data: dict[str, Any]) -> None:  # noqa: ARG002
+        pass
+
+    def set_status(self, status: SpanStatus) -> None:  # noqa: ARG002
+        pass
+
+    def record_error(self, exc: BaseException) -> None:  # noqa: ARG002
+        pass
+
+    def add_tag(self, key: str, value: str) -> None:  # noqa: ARG002
+        pass
+
+
+class _ExperimentCM:
+    """
+    Dual sync/async context manager that tags all traces within its scope
+    with a named experiment, enabling cross-trace comparison in the dashboard.
+
+    Obtain via ``tracer.experiment(name)`` or ``traceai.experiment(name)``.
+    """
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._tok: Token[str | None] | None = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def __enter__(self) -> _ExperimentCM:
+        self._tok = _current_experiment.set(self._name)
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        if self._tok is not None:
+            _current_experiment.reset(self._tok)
+
+    async def __aenter__(self) -> _ExperimentCM:
+        self._tok = _current_experiment.set(self._name)
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        if self._tok is not None:
+            _current_experiment.reset(self._tok)
+
+
 class Tracer:
     """
     Global tracer. Obtain via the module-level singleton:
@@ -109,8 +175,11 @@ class Tracer:
         from traceai import tracer
     """
 
-    def __init__(self, store: TraceStore | None = None) -> None:
+    def __init__(self, store: TraceStore | None = None, sample_rate: float = 1.0) -> None:
+        if not 0.0 <= sample_rate <= 1.0:
+            raise ValueError(f"sample_rate must be between 0.0 and 1.0, got {sample_rate}")
         self._store = store or TraceStore()
+        self._sample_rate = sample_rate
         # In-memory registry: trace_id → list of closed spans.
         # Used to compute span_count / llm_call_count at finalization
         # without a DB round-trip (avoids timing races with fire-and-forget saves).
@@ -130,6 +199,29 @@ class Tracer:
     def current_span_id(self) -> str | None:
         return _current_span_id.get()
 
+    def experiment(self, name: str) -> _ExperimentCM:
+        """
+        Context manager that groups all traces within its scope into a named experiment.
+
+        Every trace started inside this block (via ``@trace`` or implicitly) gets
+        ``tags["traceai.experiment"] = name``.  Tagged traces are treated as a
+        **comparable family** in the dashboard — you can select any two and click
+        Compare without them needing to be replay-linked.
+
+        Works in both sync and async contexts::
+
+            # sync
+            with tracer.experiment("gpt-vs-claude"):
+                ask_openai(prompt)
+                ask_anthropic(prompt)
+
+            # async
+            async with tracer.experiment("batch-eval"):
+                await run_openai(prompt)
+                await run_anthropic(prompt)
+        """
+        return _ExperimentCM(name)
+
     # ------------------------------------------------------------------
     # @tracer.trace decorator
     # ------------------------------------------------------------------
@@ -141,6 +233,7 @@ class Tracer:
         name: str | None = None,
         tags: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
+        sample_rate: float | None = None,
     ) -> F | Callable[[F], F]:
         """
         Decorator that wraps an entire function as a root Trace.
@@ -151,6 +244,9 @@ class Tracer:
 
             @tracer.trace(name="custom-name", tags={"env": "prod"})
             def fn(): ...
+
+            @tracer.trace(sample_rate=0.1)   # capture 10% of calls
+            def fn(): ...
         """
 
         def decorator(fn: F) -> F:
@@ -160,14 +256,18 @@ class Tracer:
 
                 @functools.wraps(fn)
                 async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                    return await self._run_trace_async(fn, args, kwargs, trace_name, tags, metadata)
+                    return await self._run_trace_async(
+                        fn, args, kwargs, trace_name, tags, metadata, sample_rate
+                    )
 
                 return async_wrapper  # type: ignore[return-value]
             else:
 
                 @functools.wraps(fn)
                 def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                    return self._run_trace_sync(fn, args, kwargs, trace_name, tags, metadata)
+                    return self._run_trace_sync(
+                        fn, args, kwargs, trace_name, tags, metadata, sample_rate
+                    )
 
                 return sync_wrapper  # type: ignore[return-value]
 
@@ -185,8 +285,22 @@ class Tracer:
         name: str,
         tags: dict[str, str] | None,
         metadata: dict[str, Any] | None,
+        sample_rate: float | None = None,
     ) -> Any:
-        trace = Trace(name=name, tags=tags or {}, metadata=metadata)
+        effective_rate = sample_rate if sample_rate is not None else self._sample_rate
+        if random.random() >= effective_rate:
+            # Sampled out — run the function unchanged, suppress all child tracing.
+            tok_suppressed = _tracing_suppressed.set(True)
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                _tracing_suppressed.reset(tok_suppressed)
+
+        effective_tags: dict[str, str] = dict(tags or {})
+        exp = _current_experiment.get()
+        if exp:
+            effective_tags.setdefault("traceai.experiment", exp)
+        trace = Trace(name=name, tags=effective_tags, metadata=metadata)
 
         # Capture root-level inputs as positional/keyword args summary
         try:
@@ -220,8 +334,22 @@ class Tracer:
         name: str,
         tags: dict[str, str] | None,
         metadata: dict[str, Any] | None,
+        sample_rate: float | None = None,
     ) -> Any:
-        trace = Trace(name=name, tags=tags or {}, metadata=metadata)
+        effective_rate = sample_rate if sample_rate is not None else self._sample_rate
+        if random.random() >= effective_rate:
+            # Sampled out — run the function unchanged, suppress all child tracing.
+            tok_suppressed = _tracing_suppressed.set(True)
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                _tracing_suppressed.reset(tok_suppressed)
+
+        effective_tags_async: dict[str, str] = dict(tags or {})
+        exp_async = _current_experiment.get()
+        if exp_async:
+            effective_tags_async.setdefault("traceai.experiment", exp_async)
+        trace = Trace(name=name, tags=effective_tags_async, metadata=metadata)
 
         try:
             sig = inspect.signature(fn)
@@ -411,9 +539,13 @@ class _DualSpanCM:
         self._tok_trace: Token[str | None] | None = None
         self._tok_span: Token[str | None] | None = None
         self._ctx: SpanContext | None = None
+        self._suppressed = False
 
     # Sync protocol
     def __enter__(self) -> SpanContext:
+        if _tracing_suppressed.get():
+            self._suppressed = True
+            return _NoOpSpanContext()  # type: ignore[return-value]
         span, tok_trace, tok_span = self._tracer._make_span(self._name, self._kind, self._metadata)
         self._span = span
         self._tok_trace = tok_trace
@@ -427,6 +559,8 @@ class _DualSpanCM:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
+        if self._suppressed:
+            return
         assert self._span and self._tok_trace and self._tok_span
         self._tracer._close_span(self._span, self._tok_trace, self._tok_span, exc_val)
         # Persist — run async save from sync context
@@ -434,6 +568,9 @@ class _DualSpanCM:
 
     # Async protocol
     async def __aenter__(self) -> SpanContext:
+        if _tracing_suppressed.get():
+            self._suppressed = True
+            return _NoOpSpanContext()  # type: ignore[return-value]
         span, tok_trace, tok_span = self._tracer._make_span(self._name, self._kind, self._metadata)
         self._span = span
         self._tok_trace = tok_trace
@@ -447,6 +584,8 @@ class _DualSpanCM:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
+        if self._suppressed:
+            return
         assert self._span and self._tok_trace and self._tok_span
         self._tracer._close_span(self._span, self._tok_trace, self._tok_span, exc_val)
         await self._tracer._save_span_async(self._span)
