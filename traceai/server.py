@@ -229,6 +229,15 @@ class KeyStatus(BaseModel):
     source: str  # "env", "config", or "none"
 
 
+class ExperimentInfo(BaseModel):
+    name: str
+    trace_count: int
+    total_tokens: int | None
+    total_cost_usd: float | None
+    first_started_at: str
+    last_started_at: str
+
+
 # ---------------------------------------------------------------------------
 # Provider helpers for replay
 # ---------------------------------------------------------------------------
@@ -370,7 +379,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     global _store
     _store = TraceStore(db_path=db_path)
 
-    app = FastAPI(title="TraceAI", version="0.1.0")
+    from traceai import __version__
+
+    app = FastAPI(title="TraceAI", version=__version__)
 
     app.add_middleware(
         CORSMiddleware,
@@ -442,6 +453,42 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         """Permanently delete all traces and spans."""
         deleted = await store.aclear_all()
         return {"deleted": deleted}
+
+    # ------------------------------------------------------------------
+    # Experiments
+    # ------------------------------------------------------------------
+
+    @app.get("/api/experiments", response_model=list[ExperimentInfo])
+    async def list_experiments(
+        store: TraceStore = Depends(get_store),
+    ) -> list[ExperimentInfo]:
+        """Return named experiment groups with aggregate stats."""
+        rows = await store.alist_experiments()
+        return [
+            ExperimentInfo(
+                name=r["experiment_name"],
+                trace_count=r["trace_count"],
+                total_tokens=r["total_tokens"],
+                total_cost_usd=r["total_cost_usd"],
+                first_started_at=r["first_started_at"],
+                last_started_at=r["last_started_at"],
+            )
+            for r in rows
+        ]
+
+    @app.get("/api/experiments/{experiment_name}/traces", response_model=TracesResponse)
+    async def get_experiment_traces(
+        experiment_name: str,
+        store: TraceStore = Depends(get_store),
+    ) -> TracesResponse:
+        """Return all traces belonging to a named experiment."""
+        traces = await store.aget_experiment_traces(experiment_name)
+        return TracesResponse(
+            traces=traces,
+            total=len(traces),
+            limit=len(traces),
+            offset=0,
+        )
 
     # ------------------------------------------------------------------
     # Provider key detection & key management (provider-agnostic)

@@ -306,6 +306,43 @@ class TraceStore:
             await db.commit()
             return count
 
+    async def alist_experiments(self) -> list[dict[str, Any]]:
+        """Return aggregate stats grouped by experiment name (``traceai.experiment`` tag)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT
+                    json_extract(tags, '$."traceai.experiment"') AS experiment_name,
+                    COUNT(*)                                      AS trace_count,
+                    SUM(total_tokens)                             AS total_tokens,
+                    SUM(total_cost_usd)                           AS total_cost_usd,
+                    MIN(started_at)                               AS first_started_at,
+                    MAX(started_at)                               AS last_started_at
+                FROM traces
+                WHERE json_extract(tags, '$."traceai.experiment"') IS NOT NULL
+                GROUP BY experiment_name
+                ORDER BY last_started_at DESC
+                """
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def aget_experiment_traces(self, experiment_name: str) -> list[Trace]:
+        """Return all traces tagged with a given experiment name."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT * FROM traces
+                WHERE json_extract(tags, '$."traceai.experiment"') = ?
+                ORDER BY started_at DESC
+                """,
+                (experiment_name,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [_row_to_trace(dict(r)) for r in rows]
+
     async def aget_span(self, span_id: str) -> Span | None:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row

@@ -16,11 +16,17 @@ import type { Span, SpanKind, Trace } from "../types/api";
 /**
  * Returns the replay-family root ID for a trace.
  *
- * - New traces carry `tags.replay_root` (set by the server on every replay).
- * - Legacy replays fall back to `metadata.replay_of_trace` (1-level only).
- * - Original traces (no replay lineage) return their own ID.
+ * Three cases, checked in priority order:
+ * 1. Experiment traces — share `"experiment:<name>"` as their family key so
+ *    any two runs of the same experiment can be compared, even if they are
+ *    unrelated by replay lineage.
+ * 2. Replay traces — carry `tags.replay_root` (set by the server on every
+ *    replay), or fall back to `metadata.replay_of_trace` for legacy replays.
+ * 3. Original traces (no experiment tag, no replay lineage) — use their own ID.
  */
 export function replayFamily(trace: Trace): string {
+  const exp = trace.tags?.["traceai.experiment"];
+  if (exp) return `experiment:${exp}`;
   if (trace.tags?.replay_root) return trace.tags.replay_root;
   const meta = trace.metadata as Record<string, unknown> | null;
   if (meta?.replay_of_trace) return meta.replay_of_trace as string;

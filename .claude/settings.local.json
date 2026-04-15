@@ -3,7 +3,10 @@
     "allow": [
       "Bash(ruff check:*)",
       "Bash(ruff format:*)",
-      "Bash(python -m mypy traceai/)"
+      "Bash(python -m mypy traceai/)",
+      "Bash(python -m mypy traceai/integrations/)",
+      "Bash(python -m pytest tests/integrations/ -v --tb=short)",
+      "Bash(python -m pytest tests/integrations/ --tb=short -q)"
     ]
   }
 }

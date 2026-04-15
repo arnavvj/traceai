@@ -407,5 +407,7 @@ def config(
     table.add_row("OpenAI Key", _key_status("OPENAI_API_KEY", "openai_api_key"))
     table.add_row("Anthropic Key", _key_status("ANTHROPIC_API_KEY", "anthropic_api_key"))
     table.add_row("Config File", str(CONFIG_PATH))
-    table.add_row("Version", "0.1.0")
+    from traceai import __version__
+
+    table.add_row("Version", __version__)
     console.print(table)

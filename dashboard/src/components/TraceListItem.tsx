@@ -150,6 +150,14 @@ export function TraceListItem({
           {trace.total_cost_usd != null && (
             <span>${trace.total_cost_usd.toFixed(4)}</span>
           )}
+          {trace.tags?.["traceai.experiment"] && (
+            <span
+              className="rounded bg-violet-500/15 px-1 py-0.5 text-[10px] font-medium text-violet-400"
+              title={`Experiment: ${trace.tags["traceai.experiment"]}`}
+            >
+              ⇄ {trace.tags["traceai.experiment"]}
+            </span>
+          )}
         </div>
 
         {/* Timestamp — only for root traces */}

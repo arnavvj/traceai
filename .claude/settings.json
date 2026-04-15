@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest*)",
+      "Bash(python -m ruff*)",
+      "Bash(python -m mypy*)",
+      "Bash(python -m build*)",
+      "Bash(pip install*)",
+      "Bash(python -c*)",
+      "Bash(python examples/*)",
+      "Bash(traceai*)",
+      "Bash(wsl -e bash -c \"cd '*dashboard*' && npm run build*\")"
+    ]
+  }
+}

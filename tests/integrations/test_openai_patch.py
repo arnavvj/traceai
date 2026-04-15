@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai.resources.chat.completions as _oai
@@ -216,3 +217,249 @@ class TestAsyncPatch:
         assert spans[0].status == SpanStatus.ERROR
         assert spans[0].error is not None
         assert spans[0].error.message == "async API error"
+
+
+# ---------------------------------------------------------------------------
+# Streaming helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_stream_chunks(
+    content_parts: list[str],
+    finish_reason: str = "stop",
+    prompt_tokens: int | None = 42,
+    completion_tokens: int | None = 128,
+) -> list[MagicMock]:
+    """Build a list of fake ChatCompletionChunk objects for streaming tests."""
+    chunks: list[MagicMock] = []
+    for part in content_parts:
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = part
+        chunk.choices[0].finish_reason = None
+        chunk.usage = None
+        chunks.append(chunk)
+    # Final chunk with finish_reason and optional usage
+    final = MagicMock()
+    final.choices = [MagicMock()]
+    final.choices[0].delta.content = None
+    final.choices[0].finish_reason = finish_reason
+    if prompt_tokens is not None and completion_tokens is not None:
+        final.usage.prompt_tokens = prompt_tokens
+        final.usage.completion_tokens = completion_tokens
+    else:
+        final.usage = None
+    chunks.append(final)
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# TestSyncStreaming
+# ---------------------------------------------------------------------------
+
+
+class TestSyncStreaming:
+    def test_streaming_creates_span_with_correct_kind(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["Hello", " world"])
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(return_value=iter(chunks))
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            list(result)  # consume
+
+        traces = store.list_traces()
+        assert len(traces) == 1
+        spans = store.get_spans(traces[0].trace_id)
+        assert len(spans) == 1
+        assert spans[0].kind == SpanKind.LLM_CALL
+
+    def test_streaming_captures_accumulated_content(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["Hello", " ", "world"])
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(return_value=iter(chunks))
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            list(result)
+
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        assert spans[0].outputs is not None
+        assert spans[0].outputs["content"] == "Hello world"
+        assert spans[0].outputs["finish_reason"] == "stop"
+
+    def test_streaming_captures_token_usage(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["Hi"], prompt_tokens=10, completion_tokens=5)
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(return_value=iter(chunks))
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            list(result)
+
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        meta = spans[0].metadata
+        assert meta is not None
+        assert meta["gen_ai.usage.input_tokens"] == 10
+        assert meta["gen_ai.usage.output_tokens"] == 5
+        assert meta["gen_ai.streaming"] is True
+
+    def test_streaming_no_usage_leaves_tokens_none(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["Hi"], prompt_tokens=None, completion_tokens=None)
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(return_value=iter(chunks))
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            list(result)
+
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        meta = spans[0].metadata
+        assert meta is not None
+        assert meta["gen_ai.usage.input_tokens"] is None
+        assert meta["gen_ai.usage.output_tokens"] is None
+
+    def test_streaming_yields_chunks_transparently(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["a", "b"])
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(return_value=iter(chunks))
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            received = list(result)
+
+        assert received == chunks
+
+    def test_streaming_error_mid_stream_records_error(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        def _failing_iter() -> Any:
+            chunk = MagicMock()
+            chunk.choices = [MagicMock()]
+            chunk.choices[0].delta.content = "partial"
+            chunk.choices[0].finish_reason = None
+            chunk.usage = None
+            yield chunk
+            raise RuntimeError("connection lost")
+
+        fake_stream = MagicMock()
+        fake_stream.__iter__ = MagicMock(side_effect=lambda: _failing_iter())
+        with patch.object(_oai.Completions, "create", return_value=fake_stream):
+            _oai_module.instrument()
+            result = _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o", stream=True)
+            with pytest.raises(RuntimeError, match="connection lost"):
+                list(result)
+
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        assert spans[0].status == SpanStatus.ERROR
+        assert spans[0].error is not None
+        assert spans[0].error.message == "connection lost"
+
+    def test_non_streaming_still_works(self, store: TraceStore, patch_global_tracer: None) -> None:
+        """Regression: non-streaming path must remain functional."""
+        fake = _make_fake_response()
+        with patch.object(_oai.Completions, "create", return_value=fake):
+            _oai_module.instrument()
+            _oai.Completions.create(MagicMock(), messages=[], model="gpt-4o")
+
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        assert spans[0].kind == SpanKind.LLM_CALL
+        assert spans[0].outputs is not None
+        assert spans[0].outputs["content"] == "Test response"
+
+
+# ---------------------------------------------------------------------------
+# TestAsyncStreaming
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncStreaming:
+    async def test_async_streaming_creates_span(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["Hello", " async"])
+
+        async def _async_iter() -> Any:
+            for c in chunks:
+                yield c
+
+        fake_stream = MagicMock()
+        fake_stream.__aiter__ = MagicMock(return_value=_async_iter())
+        with patch.object(_oai.AsyncCompletions, "create", new=AsyncMock(return_value=fake_stream)):
+            _oai_module.instrument()
+            result = await _oai.AsyncCompletions.create(
+                MagicMock(), messages=[], model="gpt-4o", stream=True
+            )
+            collected = []
+            async for c in result:
+                collected.append(c)
+
+        await asyncio.sleep(0.05)
+        traces = store.list_traces()
+        assert len(traces) == 1
+        spans = store.get_spans(traces[0].trace_id)
+        assert len(spans) == 1
+        assert spans[0].kind == SpanKind.LLM_CALL
+
+    async def test_async_streaming_captures_content(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        chunks = _make_stream_chunks(["foo", "bar"])
+
+        async def _async_iter() -> Any:
+            for c in chunks:
+                yield c
+
+        fake_stream = MagicMock()
+        fake_stream.__aiter__ = MagicMock(return_value=_async_iter())
+        with patch.object(_oai.AsyncCompletions, "create", new=AsyncMock(return_value=fake_stream)):
+            _oai_module.instrument()
+            result = await _oai.AsyncCompletions.create(
+                MagicMock(), messages=[], model="gpt-4o", stream=True
+            )
+            async for _ in result:
+                pass
+
+        await asyncio.sleep(0.05)
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        assert spans[0].outputs is not None
+        assert spans[0].outputs["content"] == "foobar"
+
+    async def test_async_streaming_error_records_error(
+        self, store: TraceStore, patch_global_tracer: None
+    ) -> None:
+        async def _failing_iter() -> Any:
+            chunk = MagicMock()
+            chunk.choices = [MagicMock()]
+            chunk.choices[0].delta.content = "partial"
+            chunk.choices[0].finish_reason = None
+            chunk.usage = None
+            yield chunk
+            raise RuntimeError("async connection lost")
+
+        fake_stream = MagicMock()
+        fake_stream.__aiter__ = MagicMock(return_value=_failing_iter())
+        with patch.object(_oai.AsyncCompletions, "create", new=AsyncMock(return_value=fake_stream)):
+            _oai_module.instrument()
+            result = await _oai.AsyncCompletions.create(
+                MagicMock(), messages=[], model="gpt-4o", stream=True
+            )
+            with pytest.raises(RuntimeError, match="async connection lost"):
+                async for _ in result:
+                    pass
+
+        await asyncio.sleep(0.05)
+        spans = store.get_spans(store.list_traces()[0].trace_id)
+        assert spans[0].status == SpanStatus.ERROR
+        assert spans[0].error is not None
+        assert spans[0].error.message == "async connection lost"
