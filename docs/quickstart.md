@@ -25,15 +25,15 @@ This guide takes you from zero to a fully instrumented AI agent in under five mi
 ## 1. Installation
 
 ```bash
-pip install traceai
+pip install traceai-sdk
 ```
 
 For auto-instrumentation with specific providers:
 
 ```bash
-pip install "traceai[openai]"       # includes openai>=1.0
-pip install "traceai[anthropic]"    # includes anthropic>=0.25
-pip install "traceai[openai,anthropic]"   # both
+pip install "traceai-sdk[openai]"       # includes openai>=1.0
+pip install "traceai-sdk[anthropic]"    # includes anthropic>=0.25
+pip install "traceai-sdk[openai,anthropic]"   # both
 ```
 
 Requires Python 3.11+. No cloud account. No Docker. No signup.

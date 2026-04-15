@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/traceai/"><img src="https://img.shields.io/pypi/v/traceai?color=6366f1&label=pypi&logo=pypi&logoColor=white" alt="PyPI version"/></a>
-  <a href="https://pypi.org/project/traceai/"><img src="https://img.shields.io/pypi/pyversions/traceai?color=6366f1&logo=python&logoColor=white" alt="Python versions"/></a>
+  <a href="https://pypi.org/project/traceai-sdk/"><img src="https://img.shields.io/pypi/v/traceai-sdk?color=6366f1&label=pypi&logo=pypi&logoColor=white" alt="PyPI version"/></a>
+  <a href="https://pypi.org/project/traceai-sdk/"><img src="https://img.shields.io/pypi/pyversions/traceai-sdk?color=6366f1&logo=python&logoColor=white" alt="Python versions"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/arnavvj/traceai?color=6366f1" alt="License"/></a>
   <a href="https://github.com/arnavvj/traceai/actions"><img src="https://img.shields.io/github/actions/workflow/status/arnavvj/traceai/ci.yml?branch=main&color=10b981&label=tests&logo=github" alt="CI"/></a>
   <img src="https://img.shields.io/badge/type_checked-mypy-6366f1?logo=python&logoColor=white" alt="mypy"/>
@@ -119,7 +119,7 @@ Inspect traces without opening a browser: `traceai list`, `traceai inspect <id>`
 ## Quick Start
 
 ```bash
-pip install traceai
+pip install traceai-sdk
 ```
 
 ### Auto-instrument OpenAI in 2 lines
@@ -407,19 +407,19 @@ Manage configuration stored at `~/.traceai/config.toml`.
 
 ```bash
 # Core (tracer + dashboard + CLI)
-pip install traceai
+pip install traceai-sdk
 
 # With OpenAI auto-instrumentation
-pip install "traceai[openai]"
+pip install "traceai-sdk[openai]"
 
 # With Anthropic auto-instrumentation
-pip install "traceai[anthropic]"
+pip install "traceai-sdk[anthropic]"
 
 # Both providers
-pip install "traceai[openai,anthropic]"
+pip install "traceai-sdk[openai,anthropic]"
 
 # Development (tests, linting, type checking)
-pip install "traceai[dev]"
+pip install "traceai-sdk[dev]"
 ```
 
 Requires Python 3.11+.

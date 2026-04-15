@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "traceai"
+name = "traceai-sdk"
 version = "0.5.0"
 description = "Chrome DevTools for AI agents. Debug prompts, tool calls, memory, and reasoning with a visual execution timeline."
 readme = "README.md"
